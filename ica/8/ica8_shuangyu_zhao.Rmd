@@ -1,0 +1,95 @@
+---
+title: "ica8_shuangyu_zhao"
+author: "shuangyu_zhao"
+date: "2023-02-02"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ISLR2)
+oj <- OJ
+head(oj)
+```
+1.
+```{r}
+oj$target <- ifelse(oj$Purchase=="CH",1,0)
+head(oj)
+# CH--1. MM--0
+```
+
+2.
+```{r}
+split_pro <- 0.75
+n <- length(oj$Purchase)*split_pro
+row_samp <- sample(1:length(oj$Purchase), n, replace = FALSE)
+train <- oj[row_samp,]
+test <- oj[-row_samp,]
+```
+
+3.
+```{r}
+mod <- glm(data = train, target ~ PriceDiff + LoyalCH, family = binomial)
+summary(mod)
+```
+
+a. they are all significant enough
+
+b.
+```{r}
+library(caret)
+confusionMatrix(data = as.factor(as.integer(2*mod$fitted.values)), reference = as.factor(train$target))
+```
+```{r}
+prediction <- predict(mod, test, type = "response")
+```
+
+```{r}
+confusionMatrix(data = as.factor(as.integer(2*prediction)), reference = as.factor(test$target))
+```
+
+c.
+```{r}
+library(tidyverse)
+df <- data.frame('y' = mod$y, 'fit' = mod$fitted.values)
+calib <- data.frame('count' = numeric(0), 'bin' = numeric(0), 'prob' = numeric(0))
+for(i in 1:10){
+  temp <- filter(df, fit > (i-1)/10 & fit < i/10)
+  calib[nrow(calib) + 1,]$count <- nrow(temp)
+  calib[nrow(calib),]$bin <- (i - .5)/10
+  calib[nrow(calib),]$prob <- mean(temp$y)
+}
+calib
+```
+
+
+4.
+```{r}
+coeff1 <- rep(0, 1000)
+coeff2 <- rep(0, 1000)
+n <- nrow(oj)
+for(i in 1:1000){
+  row_samp <- sample(1:n, replace = TRUE)
+  oj_samp <- oj[row_samp,]
+  temp_mod <- glm(data = oj_samp, target ~ PriceDiff  + LoyalCH, family = binomial)
+  coeff1[i] <- temp_mod$coefficients[2]
+  coeff2[i] <- temp_mod$coefficients[3]
+}
+quantile(coeff1, c(0.025, 0.975))
+quantile(coeff2, c(0.025, 0.975))
+```
+
+
+
+
+
+
+
+
+

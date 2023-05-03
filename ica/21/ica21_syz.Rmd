@@ -1,0 +1,56 @@
+---
+title: "ica21"
+author: "Shuangyu Zhao"
+date: "2023-04-04"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(forecast)
+```
+
+1.	For the beer dataset
+```{r}
+beer <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/beer.csv")
+tail(beer)
+```
+```{r}
+beer_ts <- ts(beer$Monthly.beer.production, start = c(1956, 1), end = c(1995, 8), frequency =12 )
+```
+
+a.	Graph the time series.  Does it appear that there is seasonality?
+appear
+```{r}
+plot(beer_ts)
+```
+
+b.	Plot the acf and pacf functions.
+```{r}
+acf(beer_ts)
+```
+```{r}
+pacf(beer_ts)
+```
+
+
+c.	Create an ARIMA forecasts auto.arima.  Does the forecast have seasonality?
+```{r}
+beer_dec <- decompose(beer_ts, type = 'multiplicative')
+plot(beer_dec)
+```
+```{r}
+rand_beer <- ts(beer_dec$random[7:470], start = c(1956,7), frequency = 12)
+beer_aa <- auto.arima(rand_beer)
+```
+
+
+d.	Compute the MAPE.  How does the MAPE compare to the H-W model from last time?
+```{r}
+mean(abs(na.omit(beer_aa$residuals))/rand_beer)
+```
+

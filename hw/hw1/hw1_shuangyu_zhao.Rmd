@@ -1,0 +1,239 @@
+---
+title: "hw1"
+author: "shuangyu_zhao"
+date: "2023-01-11"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sqldf)
+```
+
+```{r}
+order_details <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/order_details.csv")
+orders <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/orders.csv")
+territories <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/territories.csv")
+regions <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/regions.csv")
+employee_territories <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/employee_territories.csv")
+employees <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/employees.csv")
+customers <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/customers.csv")
+shippers <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/shippers.csv")
+suppliers <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/suppliers.csv")
+products <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/products.csv")
+categories <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/categories.csv")
+```
+
+1.Perform a sort of orders by employeeID, then by shipVia, and then by freight, for those orders by shipped to France.
+```{r}
+ordered_order <- sqldf("SELECT *
+                        FROM orders
+                        WHERE shipCountry = 'France'
+                        ORDER BY employeeID, shipVia, freight")
+head(ordered_order)
+```
+
+
+
+2. Which shipVia has the largest average cost?
+```{r}
+ave_cost_max <- sqldf("SELECT shipVia, 
+                  AVG(freight) AS ave_cost
+                  FROM orders
+                  GROUP BY shipVia
+                  ORDER BY ave_cost DESC
+                  LIMIT 2")
+ave_cost_max
+```
+
+shipVia = 2 has the largest average cost.
+
+
+3. Which product category has the highest average UnitPrice? The Lowest?
+```{r}
+categorie_unitprice<- sqldf("SELECT AVG(UnitPrice), categories.*
+                             FROM products
+                             INNER JOIN categories 
+                             ON categories.categoryID = products.categoryID
+                             GROUP BY products.categoryID
+                             ORDER BY AVG(UnitPrice)")
+head(categorie_unitprice, 2)
+tail(categorie_unitprice, 2)
+```
+
+Meat/Poultry(6) has the highest average UnitPrice.
+
+Grains/Cereals(5) has the lowest average UnitPrice.
+
+
+
+4. Which products are supplied by a company in the United States?
+```{r}
+product_usa <- sqldf("SELECT Country, CompanyName, suppliers.SupplierID, products.ProductID, products.ProductName
+                    FROM suppliers
+                    INNER JOIN products 
+                    ON suppliers.SupplierID = products.SupplierID
+                    GROUP BY products.ProductID
+                    HAVING Country = 'USA'
+                    ORDER BY suppliers.SupplierID")
+product_usa
+```
+
+Chef Anton's Cajun Seasoning, Chef Anton's Gumbo Mix, Louisiana Fiery Hot Pepper Sauce and Louisiana Hot Spiced Okra are supplied by New Orleans Cajun Delights in USA.
+
+Grandma's Boysenberry Spread, Uncle Bob's Organic Dried Pears and Northwoods Cranberry Sauce are supplied by Grandma Kelly's Homestead in USA.
+
+Sasquatch Ale, Steeleye Stout and Laughing Lumberjack Lager are supplied by Bigfoot Breweries in USA.
+
+Boston Crab Meat and Jack's New England Clam Chowder are supplied by New England Seafood Cannery in USA.
+
+
+
+
+5.Which shipper is shipping the largest number of units of product? Answer in terms of units; you do not need to consider quantityPerUnit here.
+```{r}
+shipper_largest <- sqldf("SELECT order_details.quantity, 
+                         orders.shipName, orders.shipVia,
+                         shippers.companyName
+                         FROM order_details
+                         INNER JOIN orders ON orders.orderID = order_details.orderID
+                         INNER JOIN shippers ON orders.shipVia = shippers.shipperID
+                         ORDER BY order_details.quantity DESC
+                         LIMIT 3")
+shipper_largest
+```
+
+Federal Shipping and United Package are shipping the largest number of units of products.
+
+
+
+6. Which employee is tied to the most sales revenue? Give the name, not the code, along with the total revenue for the employee.
+```{r}
+order_revenue <- sqldf("SELECT orders.orderID, orders.employeeID,
+                       order_details.unitPrice * order_details.quantity *( 1- order_details.discount) AS revenue
+                       FROM order_details
+                       INNER JOIN orders
+                       WHERE order_details.orderID = orders.orderID")
+
+best_employee <- sqldf("SELECT revenue, order_revenue.employeeID, 
+                       employees.firstName, employees.lastName
+                       FROM order_revenue
+                       INNER JOIN employees
+                       WHERE employees.employeeID = order_revenue.employeeID
+                       ORDER BY revenue DESC
+                       LIMIT 2")
+best_employee
+```
+Nancy Davolio is tied to the most sales revenue.
+
+
+7. Find the total revenue for each product category.
+```{r}
+product_order_revenue <- sqldf("SELECT productID, orderID,
+                              order_details.unitPrice * order_details.quantity *( 1- order_details.discount) AS revenue
+                               FROM order_details
+                              ORDER BY orderID")
+
+totallrevenue_category <- sqldf("SELECT SUM(product_order_revenue.revenue) AS revenue_category,
+                                products.CategoryID, categories.categoryName
+                                FROM product_order_revenue
+                                INNER JOIN products ON products.productID = product_order_revenue.productID
+                                INNER JOIN categories ON products.CategoryID = categories.categoryID
+                                GROUP BY products.CategoryID")
+totallrevenue_category
+```
+
+
+
+8. Consider the amount of revenue for each customer. If there were no discounts applied, which customer would see the largest increase in cost?
+```{r}
+order_revenue_incre <- sqldf("SELECT orders.orderID, orders.customerID, customers.companyName,
+                       order_details.unitPrice * order_details.quantity * order_details.discount AS revenue_increase
+                       FROM orders
+                       INNER JOIN order_details ON order_details.orderID = orders.orderID
+                       INNER JOIN customers ON orders.customerID = customers.customerID
+                       ORDER BY revenue_increase DESC")
+head(order_revenue_incre)
+```
+
+Piccolo und mehr and Queen Cozinha have largest increase in cost. 
+
+
+9. Which order(s) has the most number of items (and how many)? Give the orderID for this one.
+```{r}
+order_item <- sqldf("SELECT order_details.orderID,
+                    SUM(order_details.quantity) AS item_num
+                    FROM order_details
+                    GROUP BY order_details.orderID
+                    ORDER BY item_num DESC
+                    ")
+
+head(order_item)
+
+```
+
+10895 has the most items.
+
+10. Create a new field called “InventoryOrderRatio” which is, for each product, the UnitsinStock (the inventory) for the product (across all customers) divided by the quantity ordered for that product. A high value represents sufficient product in stock, while a low number represents products that are in danger of running out. What 3 products are most in danger of running out?
+```{r}
+products_ior <- sqldf("SELECT CAST(products.UnitsInStock AS FLOAT) / CAST(SUM(order_details.quantity) AS FLOAT) AS InventoryOrderRatio, 
+                      products.ProductID, products.ProductName
+                      FROM products
+                      INNER JOIN order_details ON order_details.productID = products.productID
+                      GROUP BY order_details.productID
+                      ORDER BY InventoryOrderRatio")
+head(products_ior)
+```
+Chef Anton's Gumbo Mix, Alice Mutton, Thüringer Rostbratwurst are most in danger of running out
+
+
+11. A recommender engine looks at which pairs of products tend to be bought by the same customer, so that if a customer buys one, the recommender engine will recommend they buy the other. Find which product pairs are most likely to be bought by the same customer.
+```{r}
+orders_sim <- sqldf("SELECT orders.orderID, orders.customerID, order_details.productID
+               FROM orders
+               INNER JOIN order_details 
+               ON orders.orderID = order_details.orderID")
+head(orders_sim)
+```
+```{r}
+order_times <- sqldf("SELECT customerID, COUNT( DISTINCT orderID) AS order_time
+                      FROM orders_sim 
+                      GROUP BY customerID")
+head(order_times)
+```
+
+
+```{r} 
+pairs_order <-  sqldf("SELECT tabel1.customerID, tabel1.productID AS item1, tabel2.productID AS item2
+                      FROM orders_sim AS tabel1
+                      INNER JOIN orders_sim AS tabel2
+                      ON tabel1.orderID = tabel2.orderID
+                      AND tabel1.productID < tabel2.productID
+                      GROUP BY tabel2.customerID, tabel2.orderID, tabel1.productID, tabel2.productID")
+head(pairs_order, 20)
+```
+```{r}
+pair_order_times <- sqldf("SELECT pairs_order.*, COUNT(*) AS times
+                          FROM pairs_order
+                          GROUP BY customerID, item1, item2
+                          ORDER BY times DESC")
+head(pair_order_times)
+```
+
+```{r}
+prob_pair <- sqldf("SELECT pair_order_times.*, order_times.order_time AS total_order_times, 
+                   100 * (CAST(pair_order_times.times AS FLOAT) / CAST(order_times.order_time AS FLOAT)) AS prob_percentage
+                   FROM pair_order_times
+                   INNER JOIN order_times
+                   ON pair_order_times.customerID = order_times.customerID
+                   ORDER BY prob_percentage DESC")
+head(prob_pair)
+```
+21 and 37 are more likely to be bought by CENTC
+
+

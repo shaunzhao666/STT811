@@ -1,0 +1,81 @@
+---
+title: "ica9_shuangyu_zhao"
+author: "shuangyu_zhao"
+date: "2023-02-07"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ISLR2)
+oj <- OJ
+head(oj)
+```
+
+1.
+```{r}
+split_pct <- 0.75
+n <- length(oj$Purchase)*split_pct # train size
+row_samp <- sample(1:length(oj$Purchase), n, replace = FALSE)
+train <- oj[row_samp,]
+test <- oj[-row_samp,]
+```
+
+2.
+```{r}
+library(e1071)
+mod <- naiveBayes(data = train, Purchase ~ PriceDiff + LoyalCH)
+summary(mod)
+```
+```{r}
+# confusion matrix for train
+library(caret)
+train_predict <- predict(mod, train)
+confusionMatrix(data = as.factor(train_predict), reference = as.factor(train$Purchase))
+
+```
+```{r}
+# confusion matrix of test data
+
+```
+
+```{r}
+test_predict <- predict(mod, test)
+confusionMatrix(data = as.factor(test_predict), reference = as.factor(test$Purchase))
+```
+
+
+3.
+```{r}
+mod2 <- naiveBayes(data = train, Purchase~STORE+PriceDiff + LoyalCH)
+```
+```{r}
+train_predict2 <- predict(mod2, train)
+confusionMatrix(data = as.factor(train_predict2), reference = as.factor(train$Purchase))
+```
+```{r}
+test_predict2 <- predict(mod2, test)
+confusionMatrix(data = as.factor(test_predict2), reference = as.factor(test$Purchase))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

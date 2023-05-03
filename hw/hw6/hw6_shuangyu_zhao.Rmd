@@ -1,0 +1,610 @@
+---
+title: "hw6_shuangyu_zhao"
+author: "Shuangyu Zhao"
+date: "2023-03-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(ISLR2)
+library(xgboost)
+library(caret)
+library(stats)
+library(class)
+library(e1071)
+library(forecast)
+library(GGally)
+```
+
+
+1.Caravan dataset
+```{r}
+caravan <- Caravan
+head(caravan)
+```
+
+a. create a training set consisting of the first 1000 observations, and a test set consisting of the remaining observation
+```{r}
+train_1a <- caravan[1:1000, ]
+test_1a <- caravan[-c(1:1000), ]
+```
+```{r}
+dim(train_1a)
+dim(test_1a)
+```
+
+b. Fit a xgboost model to training set with Purchase as the reponse and the other variables as predictor. Use 1000 trees, and a shrinkage value of 0.01. Which predictors appear to be the most important?
+```{r}
+train_1a$response <- ifelse(train_1a$Purchase == "No", 0, 1)
+test_1a$response <- ifelse(test_1a$Purchase == "No", 0, 1)
+model1b <- xgboost(data = data.matrix(train_1a[,c(1:85)]), nrounds = 1000, eta = 0.01, label = train_1a$response, objective = "binary:logistic")
+
+```
+```{r}
+importance1b <- xgb.importance(colnames(train_1a[,c(1:85)]), model = model1b)
+importance1b
+```
+```{r}
+importance1b[importance1b$Gain == max(importance1b$Gain), ]
+```
+
+MGODGE is the most important predictor
+
+
+c. Use the xgboost model to predict the response on the test data. Predict that a person will make a purchase if the estimated probability of purchase is greater than 20%. Form a confusion matrix. What fraction of the people predicted to make a purchase do in fact make one? How does this compare with the results obtained from applying KNN or logistic regression to this dataset?
+```{r}
+# xgboost
+pred1c <- predict(model1b, data.matrix(test_1a[,c(1:85)]))
+pred1c <- ifelse(pred1c > 0.2, 1, 0)
+cm_xgboost <- confusionMatrix(data = as.factor(pred1c), reference = as.factor(test_1a$response))
+cm_xgboost
+```
+```{r}
+print(paste0("the fraction of people predicted to make a purchase do in fact make one: ", cm_xgboost$table[2,2]/(cm_xgboost$table[2,2]+cm_xgboost$table[2,1])))
+```
+
+```{r}
+# KNN
+model1c_knn <- knn(train_1a[, c(1:85, 87)], test_1a[, c(1:85, 87)], cl = train_1a$response , k = 5, prob = TRUE)
+cm_knn <- confusionMatrix(model1c_knn , reference = as.factor(test_1a$response))
+cm_knn
+```
+```{r}
+print(paste0("the fraction of people predicted to make a purchase do in fact make one: ", cm_knn$table[2,2]/(cm_knn$table[2,2]+cm_knn$table[2,1])))
+```
+
+```{r}
+# logistic regression
+train_1c <- train_1a[, c(1:85, 87)]
+test_1c <- test_1a[, c(1:85, 87)]
+
+model1c_lr <- glm(data = train_1c, response ~ . , family = binomial)
+pred_1c <- predict(model1c_lr, test_1c[, 1:85], type = "response")
+cm_lr <- confusionMatrix(data = as.factor(as.integer(2*pred_1c)), reference = as.factor(test_1c$response))
+cm_lr
+```
+```{r}
+print(paste0("the fraction of people predicted to make a purchase do in fact make one: ", cm_lr$table[2,2]/(cm_lr$table[2,2]+cm_lr$table[2,1])))
+```
+
+The accuracy of xgboost is the lowest. And logistic regression's proportion of people who actually make a purchase among those who are predicted to purchase is the highest, and knn's is the lowest.
+
+
+d
+Perform a grid search for the optimal hyperparameters in the model. Let nrounds go from 50 to 550 in steps of 100, maxdepth from 1 to 2, and eta be 0.01, .1, and .2.
+```{r}
+grid_1d <- expand.grid(nrounds = seq(50,550, by = 100), max_depth = 1:2, eta = c(.01, .1, .2), gamma=0, colsample_bytree=1, min_child_weight=1, subsample=1)
+tune_control <- caret::trainControl(
+  method = "cv", # cross-validation
+  number = 8, # with n folds 
+  #index = createFolds(tr_treated$Id_clean), # fix the folds
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE # FALSE for reproducible results 
+)
+xgb_tune <- caret::train(
+  x = train_1a[, 1:85],
+  y = train_1a$Purchase,
+  trControl = tune_control,
+  tuneGrid = grid_1d,
+  method = "xgbTree",
+  verbose = TRUE,
+)
+
+tuneplot <- function(x, probs = .90) {
+  ggplot(x) +
+    coord_cartesian(ylim = c(quantile(xgb_tune$results$Accuracy, probs = probs), min(xgb_tune$results$Accuracy))) +
+    theme_bw()
+}
+
+tuneplot(xgb_tune)
+```
+
+The condition with highest accuracy: nrounds=550, max_depth=2, eta = 0.2
+
+
+
+2. use support vector approaches in order to predict whether a given car gets high or low gas mileage based on the Auto dataset
+```{r}
+auto <- Auto
+head(auto)
+```
+
+a. Create a binary variable that takes on a 1 for cars with gas mileage above the median, and a 0 for cars with gas mileage below the median
+```{r}
+auto$Target <- ifelse(auto$mpg >= median(auto$mpg), 1, 0)
+head(auto)
+```
+
+
+b. Fit a support vector classifier at the data with various values of cost, in order to predict whether a car gets high or low gas mileage. Report the cross-validation errors associated with different values of this parameter. Comment on your results. Note you will need to fit the classifier without the gas mileage variable to produce sensible results.
+```{r}
+split_pct <- 0.7
+n <- length(auto$mpg)*split_pct # train size
+row_samp <- sample(1:length(auto$mpg), n, replace = FALSE)
+train_2b <- auto[row_samp,]
+test_2b <- auto[-row_samp,]
+```
+```{r}
+costs <- c(0.1, 1, 10, 100)
+errors_b <- rep(0, length(costs))
+for (i in 1:length(costs)) {
+  svmfit <- svm(Target ~ . - mpg - name, data = train_2b, type = "C-classification", kernel = "linear", cost = costs[i], cross = 10)
+  errors_b[i] <- 1 - mean(svmfit$fitted == auto$Target)
+}
+
+# Plot the cross-validation errors as a function of cost
+plot(log10(costs), errors_b, type = "b", xlab = "log10(cost)", ylab = "CV error")
+
+```
+
+when cost=0.1, the model reaches the highest error, when cost=10 & 100, the error are the lowest. the cost is higher, the error is lower
+
+
+c. repeat b, this time use SVMs with radial and polynomial basis kernels, with different values of gamma and degree and cost, comment on your results.
+```{r}
+#radial
+errors_c_radial <- rep(0, length(costs))
+for (i in 1:length(costs)) {
+  svmfit <- svm(Target ~ . - mpg - name, data = train_2b, type = "C-classification", kernel = "radial", cost = costs[i], cross = 10)
+  errors_c_radial[i] <- 1 - mean(svmfit$fitted == auto$Target)
+}
+
+# Plot the cross-validation errors as a function of cost
+plot(log10(costs), errors_c_radial, type = "b", xlab = "log10(cost)", ylab = "CV error")
+```
+
+When cost= 1, the model reaches the highest error. And cost=100, the error is the lowest
+
+```{r}
+#polymomial
+errors_c_poly <- rep(0, length(costs))
+for (i in 1:length(costs)) {
+  svmfit <- svm(Target ~ . - mpg - name, data = train_2b, type = "C-classification", kernel = "polynomial", cost = costs[i], cross = 10)
+  errors_c_poly[i] <- 1 - mean(svmfit$fitted == auto$Target)
+}
+
+# Plot the cross-validation errors as a function of cost
+plot(log10(costs), errors_c_poly, type = "b", xlab = "log10(cost)", ylab = "CV error")
+```
+
+when cost=10, the model reachest the lowest error. and when cost=0.1, the error is the highest.
+
+
+3.  protein, fat, sugar, carb, and fiber for this assignment.
+```{r}
+nndb <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/nndb.csv")
+head(nndb)
+```
+```{r}
+nndb_Df = nndb[, c("ID", "Protein_g", "Fat_g", "Sugar_g", "Carb_g", "Fiber_g")]
+head(nndb_Df)
+```
+a. Perform k-means clustering for these fields with 4 and 8 clusters using the algorithm from scratch (not using the kmeans command). Repeat a few times; dao you get the same cluster centers?
+
+no, i don't get the same cluster center
+```{r}
+# 4_1
+numclus <- 4
+maxiter <- 10
+nndb_sc <- scale(nndb_Df[,2:6])
+n <- length(nndb_Df$ID)
+row_samp <- sample(1:n, numclus, replace = FALSE)
+clus_loc <- nndb_sc[row_samp,]
+clus_dist <- matrix(rep(0, n*numclus), nrow = n, ncol = numclus)
+clus_pick <- rep(0, n)
+
+for(k in 1:maxiter){
+  for(i in 1:n){
+    for(j in 1:numclus) {
+      clus_dist[i,j] <- sqrt(sum((nndb_sc[i,1:5] - clus_loc[j,1:5])^2))
+    }
+    clus_pick[i] = which.min(clus_dist[i,])
+  }
+  clus_loc_new <- aggregate(nndb_sc[,1:5], list(clus_pick), FUN=mean) 
+  clus_loc <-clus_loc_new[,2:6]
+}
+
+nndb_clus <- cbind(clus_pick, nndb_Df)
+clus_loc
+```
+
+```{r}
+ggpairs(nndb_clus, mapping = ggplot2::aes(color=as.factor(clus_pick)))
+
+```
+```{r}
+# 4_2
+numclus <- 4
+maxiter <- 10
+nndb_sc <- scale(nndb_Df[,2:6])
+n <- length(nndb_Df$ID)
+row_samp <- sample(1:n, numclus, replace = FALSE)
+clus_loc <- nndb_sc[row_samp,]
+clus_dist <- matrix(rep(0, n*numclus), nrow = n, ncol = numclus)
+clus_pick <- rep(0, n)
+
+for(k in 1:maxiter){
+  for(i in 1:n){
+    for(j in 1:numclus) {
+      clus_dist[i,j] <- sqrt(sum((nndb_sc[i,1:5] - clus_loc[j,1:5])^2))
+    }
+    clus_pick[i] = which.min(clus_dist[i,])
+  }
+  clus_loc_new <- aggregate(nndb_sc[,1:5], list(clus_pick), FUN=mean) 
+  clus_loc <-clus_loc_new[,2:6]
+}
+
+nndb_clus <- cbind(clus_pick, nndb_Df)
+clus_loc
+```
+
+```{r}
+# 8_1
+numclus <- 8
+maxiter <- 10
+nndb_sc <- scale(nndb_Df[,2:6])
+n <- length(nndb_Df$ID)
+row_samp <- sample(1:n, numclus, replace = FALSE)
+clus_loc <- nndb_sc[row_samp,]
+clus_dist <- matrix(rep(0, n*numclus), nrow = n, ncol = numclus)
+clus_pick <- rep(0, n)
+
+for(k in 1:maxiter){
+  for(i in 1:n){
+    for(j in 1:numclus) {
+      clus_dist[i,j] <- sqrt(sum((nndb_sc[i,1:5] - clus_loc[j,1:5])^2))
+    }
+    clus_pick[i] = which.min(clus_dist[i,])
+  }
+  clus_loc_new <- aggregate(nndb_sc[,1:5], list(clus_pick), FUN=mean) 
+  clus_loc <-clus_loc_new[,2:6]
+}
+
+nndb_clus <- cbind(clus_pick, nndb_Df)
+clus_loc
+```
+```{r}
+# 8_2
+numclus <- 8
+maxiter <- 10
+nndb_sc <- scale(nndb_Df[,2:6])
+n <- length(nndb_Df$ID)
+row_samp <- sample(1:n, numclus, replace = FALSE)
+clus_loc <- nndb_sc[row_samp,]
+clus_dist <- matrix(rep(0, n*numclus), nrow = n, ncol = numclus)
+clus_pick <- rep(0, n)
+
+for(k in 1:maxiter){
+  for(i in 1:n){
+    for(j in 1:numclus) {
+      clus_dist[i,j] <- sqrt(sum((nndb_sc[i,1:5] - clus_loc[j,1:5])^2))
+    }
+    clus_pick[i] = which.min(clus_dist[i,])
+  }
+  clus_loc_new <- aggregate(nndb_sc[,1:5], list(clus_pick), FUN=mean) 
+  clus_loc <-clus_loc_new[,2:6]
+}
+
+nndb_clus <- cbind(clus_pick, nndb_Df)
+clus_loc
+```
+
+
+b. Next, use k-means clustering with the kmeans command. Try from 2 to 10 clusters. For how many of these cluster numbers do you get the same centers after repeating kmeans (for each number do 3 iterations of kmeans)?
+
+models with 8, 9, and 10 clusters have different centers. others are the same.
+```{r}
+# 2 clusters
+km_3b_2_1 <- kmeans(nndb_sc, centers = 2, nstart = 25)
+km_3b_2_2 <- kmeans(nndb_sc, centers = 2, nstart = 25)
+km_3b_2_3 <- kmeans(nndb_sc, centers = 2, nstart = 25)
+
+```
+```{r}
+km_3b_2_1$centers
+km_3b_2_2$centers
+km_3b_2_3$centers
+```
+
+```{r}
+# 3 clusters
+km_3b_3_1 <- kmeans(nndb_sc, centers = 3, nstart = 25)
+km_3b_3_2 <- kmeans(nndb_sc, centers = 3, nstart = 25)
+km_3b_3_3 <- kmeans(nndb_sc, centers = 3, nstart = 25)
+
+```
+```{r}
+km_3b_3_1$centers
+km_3b_3_2$centers
+km_3b_3_3$centers
+```
+
+```{r}
+# 4 clusters
+km_3b_4_1 <- kmeans(nndb_sc, centers = 4,  nstart = 25)
+km_3b_4_2 <- kmeans(nndb_sc, centers = 4,  nstart = 25)
+km_3b_4_3 <- kmeans(nndb_sc, centers = 4,  nstart = 25)
+```
+```{r}
+km_3b_4_1$centers
+km_3b_4_2$centers
+km_3b_4_3$centers
+```
+
+
+```{r}
+# 6 clusters
+km_3b_6_1 <- kmeans(nndb_sc, centers = 6, nstart = 25)
+km_3b_6_2 <- kmeans(nndb_sc, centers = 6, nstart = 25)
+km_3b_6_3 <- kmeans(nndb_sc, centers = 6, nstart = 25)
+
+```
+```{r}
+km_3b_6_1$centers
+km_3b_6_2$centers
+km_3b_6_3$centers
+```
+```{r}
+# 7 clusters
+km_3b_7_1 <- kmeans(nndb_sc, centers = 7, nstart = 25)
+km_3b_7_2 <- kmeans(nndb_sc, centers = 7, nstart = 25)
+km_3b_7_3 <- kmeans(nndb_sc, centers = 7, nstart = 25)
+
+```
+```{r}
+km_3b_7_1$centers
+km_3b_7_2$centers
+km_3b_7_3$centers
+```
+
+```{r}
+# 8 clusters
+km_3b_8_1 <- kmeans(nndb_sc, centers = 8, nstart = 25)
+km_3b_8_2 <- kmeans(nndb_sc, centers = 8, nstart = 25)
+km_3b_8_3 <- kmeans(nndb_sc, centers = 8, nstart = 25)
+```
+```{r}
+km_3b_8_1$centers
+km_3b_8_2$centers
+km_3b_8_3$centers
+```
+
+```{r}
+# 9 clusters
+km_3b_9_1 <- kmeans(nndb_sc, centers = 9, nstart = 25)
+km_3b_9_2 <- kmeans(nndb_sc, centers = 9, nstart = 25)
+km_3b_9_3 <- kmeans(nndb_sc, centers = 9, nstart = 25)
+```
+```{r}
+km_3b_9_1$centers
+km_3b_9_2$centers
+km_3b_9_3$centers
+
+```
+
+```{r}
+# 10 clusters
+km_3b_10_1 <- kmeans(nndb_sc, centers = 10, nstart = 25)
+km_3b_10_2 <- kmeans(nndb_sc, centers = 10, nstart = 25)
+km_3b_10_3 <- kmeans(nndb_sc, centers = 10, nstart = 25)
+```
+```{r}
+km_3b_10_1$centers
+km_3b_10_2$centers
+km_3b_10_3$centers
+```
+
+
+
+c. Take the highest number of clusters for which kmeans gives a consistent response (same centers after repeating). Look at the food names for the data in each cluster. Can you give a verbal description of each cluster, based on the names?
+7 clusters
+```{r}
+df_3c <- cbind(km_3b_7_1$cluster, nndb[c("Descrip", "FoodGroup" )])
+```
+```{r}
+# group1
+head(df_3c[df_3c$`km_3b_7_1$cluster`==1,])
+```
+
+```{r}
+# group2
+head(df_3c[df_3c$`km_3b_7_1$cluster`==2,])
+```
+
+```{r}
+# group3
+head(df_3c[df_3c$`km_3b_7_1$cluster`==3,])
+```
+```{r}
+# group4
+head(df_3c[df_3c$`km_3b_7_1$cluster`==4,])
+```
+```{r}
+# group5
+head(df_3c[df_3c$`km_3b_7_1$cluster`==5,])
+```
+```{r}
+# group6
+head(df_3c[df_3c$`km_3b_7_1$cluster`==6,])
+```
+```{r}
+# group7
+head(df_3c[df_3c$`km_3b_7_1$cluster`==7,])
+```
+
+group1: dry food
+group2: baby food
+group3: yorgurt, milk. juice(wet food)
+group4: dressing, oil, fats
+group5: food with spices
+group6: food with seeds of plants, healthy food
+group7: food with enrich protein(cheese, egg, pork, Turkey....)
+
+
+
+d. Perform a linear regression, predicting calories based on these 5 inputs for the entire dataset. Then do separate regression models for each of the clusters in (c), keeping only significant terms for each. How do the models compare (accuracy, adjusted R^2, etc.)?
+```{r}
+cal_pred_df <-cbind(km_3b_7_1$cluster, nndb[, c( "Protein_g", "Fat_g", "Sugar_g", "Carb_g", "Fiber_g", "Energy_kcal")])
+```
+```{r}
+# model based on entire dataset
+lm_whole <- lm(Energy_kcal ~ Protein_g + Fat_g  + Carb_g + Fiber_g, data = cal_pred_df)
+summary(lm_whole)
+sqrt(mean((lm_whole$residuals)^2))
+```
+
+```{r}
+# build the model separately
+group1 <- cal_pred_df[cal_pred_df$`km_3b_7_1$cluster`==1, ]
+group2 <- cal_pred_df[cal_pred_df$`km_3b_7_1$cluster`==2, ]
+group3 <- cal_pred_df[cal_pred_df$`km_3b_7_1$cluster`==3, ]
+group4 <- cal_pred_df[cal_pred_df$`km_3b_7_1$cluster`==4, ]
+group5 <- cal_pred_df[cal_pred_df$`km_3b_7_1$cluster`==5, ]
+group6 <- cal_pred_df[cal_pred_df$`km_3b_7_1$cluster`==6, ]
+group7 <- cal_pred_df[cal_pred_df$`km_3b_7_1$cluster`==7, ]
+lm_1 <- lm(Energy_kcal ~ Protein_g + Fat_g+ Sugar_g+ Carb_g , data = group1)
+lm_2 <- lm(Energy_kcal ~ Protein_g + Fat_g+ Sugar_g+ Carb_g + Fiber_g, data = group2)
+lm_3 <- lm(Energy_kcal ~ Protein_g + Fat_g+ Carb_g + Fiber_g, data = group3)
+lm_4 <- lm(Energy_kcal ~ Protein_g + Fat_g+ Carb_g + Fiber_g, data = group4)
+lm_5 <- lm(Energy_kcal ~ Protein_g + Fat_g, data = group5)
+lm_6 <- lm(Energy_kcal ~ Protein_g + Fat_g+ Carb_g + Fiber_g, data = group6)
+lm_7 <- lm(Energy_kcal ~ Protein_g + Fat_g+ Sugar_g+ Carb_g + Fiber_g, data = group7)
+summary(lm_1)
+summary(lm_2)
+summary(lm_3)
+summary(lm_4)
+summary(lm_5)
+summary(lm_6)
+summary(lm_7)
+mean(c(sqrt(mean((lm_1$residuals)^2)), sqrt(mean((lm_2$residuals)^2)), sqrt(mean((lm_3$residuals)^2)), sqrt(mean((lm_4$residuals)^2)), sqrt(mean((lm_5$residuals)^2)), sqrt(mean((lm_6$residuals)^2)), sqrt(mean((lm_7$residuals)^2))))
+```
+
+The model build by entire dataset is better than the models build separately. The R squared of the model build by entire dataset is higher than others. And the RMSE of that one is lower than the mean of RMSEs of modes build separately.
+
+
+4.For the gas data in the oil gas dataset
+```{r}
+oil_gas <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/oil-gas.csv")
+head(oil_gas)
+```
+
+a. Perform trend seasonality decomposition, comparing additive and multiplicative. Which one look better.
+```{r}
+gas_ts <- ts(oil_gas$Gas, frequency = 52, start = c(2013, 1), end = c(2022,4))
+```
+```{r}
+# additive
+gas_add <- decompose(gas_ts, type = "additive")
+plot(gas_add)
+```
+```{r}
+# multiplicative
+gas_multi <- decompose(gas_ts, type = "multiplicative")
+plot(gas_multi)
+```
+
+I think additive would be better.
+
+b. Create forecasts for the gas data, with
+i. naïve
+```{r}
+gas_naive <- naive(gas_ts)
+plot(gas_naive)
+```
+
+
+ii. seasonal naïve
+```{r}
+gas_snaive <- snaive(gas_ts)
+plot(gas_snaive)
+```
+
+
+iii. simple exponential smooth
+```{r}
+gas_ses <- ses(gas_ts)
+plot(gas_ses)
+```
+
+
+iv. Holt
+```{r}
+gas_holt <- holt(gas_ts)
+plot(gas_holt)
+```
+
+
+v. Holt-winters
+```{r}
+gas_ts2 <- ts(oil_gas$Gas, frequency = 13, start = c(2013, 1), end = c(2022,4))
+gas_hw <- hw(gas_ts2)
+plot(gas_hw)
+```
+
+
+c. Calculate the MAPE’s for each of the models in (b). Which fits the best?
+
+```{r}
+# naïve
+mean(abs(na.omit(gas_naive$residuals))/gas_ts)
+```
+
+```{r}
+#  seasonal naïve
+mean(abs(na.omit(gas_snaive$residuals))/gas_ts)
+```
+
+```{r}
+# simple exponential smooth
+mean(abs(na.omit(gas_ses$residuals))/gas_ts)
+```
+
+```{r}
+# Holt
+mean(abs(na.omit(gas_holt$residuals))/gas_ts)
+```
+```{r}
+# Holt-winters
+mean(abs(na.omit(gas_hw$residuals))/gas_ts2)
+```
+
+
+d. Create a plot of the best forecast along with the fitted values to show the fit.
+```{r}
+plot(gas_holt)
+lines(gas_holt$fitted, col="blue")
+legend("topleft", legend = c("forecast", "fitted value"), col=c("black", "blue"), lty = 1:1)
+```
+
+
+
+
+
+
+
+

@@ -1,0 +1,65 @@
+---
+title: "ica6_Shuangyu_Zhao"
+author: "shuangyu_zhao"
+date: "2023-01-26"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+2.
+```{r}
+heart <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/Heart.csv")
+head(heart)
+```
+```{r}
+table(heart$AHD)
+barplot(table(heart$AHD))
+```
+balanced.
+
+
+3.
+```{r}
+library(dplyr)
+glimpse(heart)
+```
+truly numeric: Age, RestBP, Chol, MaxHR, Oldpeak
+
+categorical: Sex, ChestPain, Fbs, RestECG, ExAng, Slope, Ca, Thal
+
+
+4.
+age
+```{r}
+library(ggplot2)
+ggplot(data =heart, aes(x = Age)) + geom_histogram() + facet_grid(.~AHD)
+quantile(filter(heart, AHD == 'Yes')$Age, seq(0,1, by=0.1))
+quantile(filter(heart, AHD == 'No')$Age, seq(0,1, by=0.1))
+
+```
+ChestPain
+```{r}
+ggplot(data = heart, aes(x = AHD)) + geom_bar() + facet_grid(.~ChestPain)
+```
+
+OldPeak
+```{r}
+ggplot(data =heart, aes(x = Oldpeak)) + geom_histogram() + facet_grid(.~AHD)
+quantile(filter(heart, AHD == 'Yes')$Oldpeak, seq(0,1, by=0.1))
+quantile(filter(heart, AHD == 'No')$Oldpeak, seq(0,1, by=0.1))
+```
+
+Thal
+```{r}
+ggplot(data = heart, aes(x = AHD)) + geom_bar() + facet_grid(.~Thal)
+```
+
+
+
+
+

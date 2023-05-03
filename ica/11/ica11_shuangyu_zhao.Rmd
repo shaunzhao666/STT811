@@ -1,0 +1,44 @@
+---
+title: "ica11_shuangyu_zhao"
+author: "shuangyu_zhao"
+date: "2023-02-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ISLR2)
+library(tidyverse)
+oj_scale <- scale(select_if(OJ[, 10:14], is.numeric))
+```
+```{r}
+split_pct <- 0.75
+n <- split_pct * nrow(oj_scale)
+row_samp <- sample(1:nrow(oj_scale), n, replace = FALSE)
+train <- oj_scale[row_samp,]
+test <- oj_scale[-row_samp,]
+train.Y <- OJ[row_samp,]$Purchase
+test.Y <- OJ[-row_samp,]$Purchase
+```
+
+```{r}
+library(class)
+library(caret)
+knn_mod <- knn(train, test, cl = train.Y , k = 5, prob = TRUE)
+confusionMatrix(knn_mod , reference = as.factor(test.Y))
+```
+```{r}
+knn_mod2 <- knn(train, test, cl = train.Y , k = 7, prob = TRUE)
+confusionMatrix(knn_mod2 , reference = as.factor(test.Y))
+```
+
+
+
+
+
+

@@ -1,0 +1,76 @@
+---
+title: "ica_1_shuangyu"
+author: "shuangyu_zhao"
+date: "2023-01-10"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+order_details <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/order_details.csv")
+orders <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/orders.csv")
+territories <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/territories.csv")
+regions <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/regions.csv")
+employee_territories <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/employee_territories.csv")
+employees <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/employees.csv")
+customers <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/customers.csv")
+shippers <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/shippers.csv")
+suppliers <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/suppliers.csv")
+products <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/products.csv")
+categories <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/categories.csv")
+```
+
+1.
+```{r}
+library(sqldf)
+orders <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/orders.csv")
+orders_cop <- sqldf("SELECT *
+                    FROM orders
+                    WHERE ShipVia = 1")
+```
+
+
+2.
+```{r}
+order_details <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/northwind/order_details.csv")
+order_details_cal <- sqldf("SELECT *,
+                           AVG(unitPrice) AS ave_unitprice
+                           FROM order_details
+                           GROUP BY productID")
+```
+
+
+3.
+```{r}
+colnames(order_details)
+colnames(orders)
+colnames(territories)
+colnames(regions)
+colnames(employee_territories)
+colnames(employees)
+colnames(customers)
+colnames(shippers)
+colnames(suppliers)
+colnames(products)
+colnames(categories)
+```
+ALL names with ID
+
+
+
+
+
+
+
+
+
+
+
+
+
+

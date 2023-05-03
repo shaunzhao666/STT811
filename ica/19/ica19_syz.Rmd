@@ -1,0 +1,81 @@
+---
+title: "ica19_syz"
+author: "Shuangyu Zhao"
+date: "2023-03-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1.
+```{r}
+passenger <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/passenger.csv")
+head(passenger, 13)
+```
+
+ b.	Convert it into a time series
+```{r}
+passenger_ts <- ts(passenger$AirPassengers, frequency = 12, start = c(1949, 1), end = c(1960,12))
+```
+
+c.	Create the autocorrelation and partial autocorrelation panels.  Comment on how the seasonality is observed
+```{r}
+acf(passenger_ts)
+pacf(passenger_ts)
+
+```
+
+d.	Perform a decomposition of the time series, trying both additive and multiplicative.  Which one “looks” better?
+```{r}
+pass_multi <- decompose(passenger_ts, type = "multiplicative")
+plot(pass_multi)
+```
+
+```{r}
+pass_add <- decompose(passenger_ts, type = "additive")
+plot(pass_add)
+```
+additive looks better
+
+2.
+```{r}
+oil_gas <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/oil-gas.csv")
+head(oil_gas)
+tail(oil_gas)
+```
+
+b.	Convert the oil and gas data into 2 separate time series (what is the seasonality frequency?)
+```{r}
+oil_ts <- ts(oil_gas$Oil, frequency = 52, start = c(2013, 1), end = c(2022,4))
+gas_ts <- ts(oil_gas$Gas, frequency = 52, start = c(2013, 1), end = c(2022,4))
+```
+
+
+c.	Perform a decomposition on the oil data.  How strong is the seasonality?
+```{r}
+oil_multi <- decompose(oil_ts, type = "multiplicative")
+plot(oil_multi)
+oil_add <- decompose(oil_ts, type = "additive")
+plot(oil_add)
+```
+
+
+d.	Create a scatterplot of gas vs. oil (oil on x axis).  How correlated are they?
+```{r}
+plot(oil_gas$Oil, oil_gas$Gas)
+```
+they have great correlation
+
+
+
+
+
+
+
+
+
+

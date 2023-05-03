@@ -1,0 +1,62 @@
+---
+title: "ica4_shuangyu_zhao"
+author: "shuangyu_zhao"
+date: "2023-01-19"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+complaint_his <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/Complaint_History.csv")
+customer_his <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/Customer_History.csv")
+head(complaint_his)
+head(customer_his)
+library(sqldf)
+```
+
+(a)	Summarizing the number of complaints by customer and year.
+```{r}
+sum_complain <- sqldf("SELECT CustomerID, ComplaintYear, COUNT(*) AS complaint_times
+                      FROM complaint_his
+                      GROUP BY CustomerID, ComplaintYear")
+head(sum_complain)
+```
+
+
+(b)	Add a column for predictive year
+```{r}
+sum_complain_pre <- sqldf("SELECT *, ComplaintYear+1 AS predict_year
+                          FROM sum_complain")
+head(sum_complain_pre)
+```
+
+
+(c)	Add a column which includes all complaints made by the customer on or before the year field (not predictive year).
+```{r}
+sum_complain_pre_before <- sqldf("SELECT ta2.ComplaintYear AS year, ta2.complaint_times AS new_complaint_times, ta1.*
+                                 FROM sum_complain_pre AS ta1
+                                 INNER JOIN sum_complain_pre AS ta2
+                                 ON ta1.CustomerID = ta2.CustomerID
+                                 WHERE ta1.ComplaintYear >= year")
+head(sum_complain_pre_before)
+```
+```{r}
+sum_complain_pre_before <- sqldf("SELECT ta.CustomerID, ta.ComplaintYear, ta.complaint_times, ta.predict_year,
+                                 SUM(new_complaint_times) AS past_times
+                                 FROM sum_complain_pre_before AS ta
+                                 GROUP BY CustomerID, ComplaintYear")
+
+head(sum_complain_pre_before)
+```
+
+
+
+
+
+
+

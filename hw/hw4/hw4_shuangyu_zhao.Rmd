@@ -1,0 +1,303 @@
+---
+title: "hw4_shuangyu_zhao"
+author: "shuangyu_zhao"
+date: "2023-02-20"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+1.
+```{r}
+auto <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/Auto.csv")
+auto$mpg01 <- ifelse(auto$mpg > median(auto$mpg), 1, 0)
+auto$horsepower <- as.numeric(auto$horsepower)
+which(is.na(auto))
+```
+```{r}
+auto <- na.omit(auto)
+```
+
+```{r}
+# train-test split
+split_pro <- 0.75
+n <- length(auto$mpg)*split_pro
+row_samp <- sample(1:length(auto$mpg), n, replace = FALSE)
+train1 <- auto[row_samp,]
+test1 <- auto[-row_samp,]
+```
+
+a. perform naive bayes on the training data in order to predict mpg01 using the variables that seemed most associated with mpg01 in (b). What is the test error of the model obtained?
+```{r}
+library(e1071)
+mod1 <- naiveBayes(data = train1, mpg01 ~ displacement + horsepower + weight + acceleration + year+ cylinders + origin)
+```
+```{r}
+# train set
+library(caret)
+train_predict1 <- predict(mod1, train1)
+train1nb_ma  <- confusionMatrix(data = as.factor(train_predict1), reference = as.factor(train1$mpg01))
+train1nb_ma
+```
+```{r}
+# test set
+test_predict1 <- predict(mod1, test1)
+test1nb_ma <- confusionMatrix(data = as.factor(test_predict1), reference = as.factor(test1$mpg01))
+test1nb_ma
+```
+
+the test error is
+```{r}
+1 - as.numeric(test1nb_ma$overall["Accuracy"])
+```
+
+
+
+b. Perform LDA on the training data in order to predict mpg01 using the variables that seemed most associated with mpg01 in (b). what is the test error of the model obtained?
+```{r}
+library(MASS)
+mod2 <- lda(data = train1, mpg01 ~ displacement  + weight + acceleration + horsepower + year+ cylinders + origin)
+```
+
+```{r}
+test_predict2 <- predict(mod2, test1)
+test1lda_ma <- confusionMatrix(data = as.factor(test_predict2$class), reference = as.factor(test1$mpg01))
+test1lda_ma
+```
+the test error is
+```{r}
+1 - as.numeric(test1lda_ma$overall["Accuracy"])
+```
+
+
+c. perform KNN on the training data, with several values of K, in order to predict mpg01. Use only the variables that seemed most associated with mpg01 in b. What test errors do you obtain? which value of K seems to perform the best on this data set?
+```{r}
+library(tidyverse)
+train1_knn <- scale(select_if(train1[, 2:8], is.numeric))
+train1_knn_y <- train1$mpg01
+test1_knn <- scale(select_if(test1[, 2:8], is.numeric))
+test1_knn_y <- test1$mpg01
+
+```
+```{r}
+library(class)
+knn_mod1_5 <- knn(train1_knn, test1_knn, cl = train1_knn_y , k = 5, prob = TRUE)
+test1knn_mo_5 <- confusionMatrix(knn_mod1_5 , reference = as.factor(test1_knn_y))
+test1knn_mo_5
+```
+```{r}
+knn_mod1_7 <- knn(train1_knn, test1_knn, cl = train1_knn_y , k = 7, prob = TRUE)
+test1knn_mo_7 <- confusionMatrix(knn_mod1_7 , reference = as.factor(test1_knn_y))
+test1knn_mo_7
+```
+```{r}
+knn_mod1_9 <- knn(train1_knn, test1_knn, cl = train1_knn_y , k = 9, prob = TRUE)
+test1knn_mo_9 <- confusionMatrix(knn_mod1_9 , reference = as.factor(test1_knn_y))
+test1knn_mo_9
+```
+
+the best test error is
+```{r}
+1 - as.numeric(test1knn_mo_7$overall["Accuracy"])
+```
+
+
+d. redo the naive bayes calculation from first principles(ie, without any package, by calculating the class means and standard deviation)
+```{r}
+mean1_weight <-  mean(filter(auto, mpg01 == 1)$weight)
+mean0_weight <-  mean(filter(auto, mpg01 == 0)$weight)
+sd1_weight <- sd(filter(auto, mpg01 == 1)$weight)
+sd0_weight <- sd(filter(auto, mpg01 == 0)$weight)
+mean1_weight
+mean0_weight
+sd1_weight
+sd0_weight
+```
+```{r}
+frac1 <- sum(auto$mpg01 == 1)/nrow(auto)
+```
+```{r}
+LDA_pred <- frac1 * dnorm(auto$weight, mean1_weight, sd1_weight)/(frac1 * dnorm(auto$weight, mean1_weight, sd1_weight) + (1 - frac1) * dnorm(auto$weight, mean0_weight, sd0_weight))
+
+summary(LDA_pred)
+
+```
+```{r}
+prediction_nb_hand <- ifelse(LDA_pred<=0.5, 0, 1)
+confusionMatrix(data = as.factor(prediction_nb_hand), reference = as.factor(auto$mpg01))
+```
+
+
+e. do a modified naive bayes model(2 numerical X's) which takes into account the class covariances betweent the X's
+```{r}
+# choose year and weight
+sigma <- cov(auto[, c(5, 7)])
+sigma
+```
+```{r}
+mean1_year <-  mean(filter(auto, mpg01 == 1)$year)
+mean0_year <-  mean(filter(auto, mpg01 == 0)$year)
+sd1_year <- sd(filter(auto, mpg01 == 1)$year)
+sd0_year <- sd(filter(auto, mpg01 == 0)$year)
+mean1_year
+mean0_year
+sd1_year
+sd0_year
+```
+```{r}
+library(mvtnorm)
+LDA_pred_cov <- frac1 * dmvnorm(auto[, c(5, 7)], c(mean1_weight, mean1_year), sigma)/(frac1 * dmvnorm(auto[, c(5, 7)], c(mean1_weight, mean1_year), sigma) + (1 - frac1) * dmvnorm(auto[, c(5, 7)], c(mean0_weight, mean0_year), sigma))
+
+summary(LDA_pred_cov)
+```
+```{r}
+prediction_nb_cov <- ifelse(LDA_pred_cov<=0.5, 0, 1)
+confusionMatrix(data = as.factor(prediction_nb_cov), reference = as.factor(auto$mpg01))
+```
+
+
+f. create confusion matrices and compute the overall accuracy for the 5 models(test dataset). Compare how the model did
+```{r}
+# model1 naive bayes in packages
+test1nb_ma
+```
+```{r}
+# model2 LDA
+test1lda_ma
+```
+```{r}
+# model3 KNN
+test1knn_mo_7
+```
+```{r}
+# model4 naive bayes written according to theory witout pachkage
+confusionMatrix(data = as.factor(prediction_nb_hand), reference = as.factor(auto$mpg01))
+```
+```{r}
+# model5 modified model4 by covariance with 2 X
+confusionMatrix(data = as.factor(prediction_nb_cov), reference = as.factor(auto$mpg01))
+```
+
+The accuracy of model 3 is the highest, and the accuracy of model 5 is the second highest, and model 4 are th lowest. So model 3 is the best.
+
+2.
+```{r}
+churn <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/customer_churn.csv")
+churn_model <- churn[, c(2:6, 10)]
+head(churn_model)
+```
+```{r}
+barplot(table(churn_model$Churn))
+```
+
+```{r}
+# train-test split
+split_pro <- 0.5
+n <- length(churn_model$Churn)*split_pro
+row_samp <- sample(1:length(churn_model$Churn), n, replace = FALSE)
+train2 <- churn_model[row_samp,]
+test2 <- churn_model[-row_samp,]
+```
+
+a. Create a naïve Bayes model to predict churn.
+```{r}
+mod3 <- naiveBayes(data = train2, Churn ~ Age + Total_Purchase + Account_Manager + Years + Num_Sites)
+test_predict2 <- predict(mod3, test2)
+test2nb_ma <- confusionMatrix(data = as.factor(test_predict2), reference = as.factor(test2$Churn))
+test2nb_ma
+```
+the test error is
+```{r}
+1 - as.numeric(test2nb_ma$overall["Accuracy"])
+```
+
+b. Create a KNN neighbors model to predict churn. Vary K from 4 to 10 and find out which K has the highest accuracy.
+```{r}
+train2knn_y <- train2$Churn
+test2knn_y <- test2$Churn
+Account_Manager <- train2$Account_Manager
+train2knn <- cbind(scale(train2[, c(1, 2, 4, 5)]), Account_Manager)
+Account_Manager <- test2$Account_Manager
+test2knn <- cbind(scale(test2[, c(1, 2, 4, 5)]), Account_Manager)
+```
+
+```{r}
+# k=4
+knn_mod2_4 <- knn(train2knn, test2knn, cl = train2knn_y , k = 4, prob = TRUE)
+test2knn_mo_4 <- confusionMatrix(knn_mod2_4 , reference = as.factor(test2knn_y))
+test2knn_mo_4
+```
+```{r}
+# k = 5
+knn_mod2_5 <- knn(train2knn, test2knn, cl = train2knn_y , k = 5, prob = TRUE)
+test2knn_mo_5 <- confusionMatrix(knn_mod2_5 , reference = as.factor(test2knn_y))
+test2knn_mo_5
+```
+```{r}
+# k=6
+knn_mod2_6 <- knn(train2knn, test2knn, cl = train2knn_y , k = 6, prob = TRUE)
+test2knn_mo_6 <- confusionMatrix(knn_mod2_6 , reference = as.factor(test2knn_y))
+test2knn_mo_6
+```
+```{r}
+# k = 7
+knn_mod2_7 <- knn(train2knn, test2knn, cl = train2knn_y , k = 7, prob = TRUE)
+test2knn_mo_7 <- confusionMatrix(knn_mod2_7 , reference = as.factor(test2knn_y))
+test2knn_mo_7
+```
+```{r}
+# k=8
+knn_mod2_8 <- knn(train2knn, test2knn, cl = train2knn_y , k = 8, prob = TRUE)
+test2knn_mo_8 <- confusionMatrix(knn_mod2_8 , reference = as.factor(test2knn_y))
+test2knn_mo_8
+```
+```{r}
+# k = 9
+knn_mod2_9 <- knn(train2knn, test2knn, cl = train2knn_y , k = 9, prob = TRUE)
+test2knn_mo_9 <- confusionMatrix(knn_mod2_9 , reference = as.factor(test2knn_y))
+test2knn_mo_9
+```
+```{r}
+# k = 10
+knn_mod2_10 <- knn(train2knn, test2knn, cl = train2knn_y , k = 10, prob = TRUE)
+test2knn_mo_10 <- confusionMatrix(knn_mod2_10 , reference = as.factor(test2knn_y))
+test2knn_mo_10
+```
+
+k=10 is the best
+
+
+c. Create the confusion matrices for the test dataset for each of these and compare the models’ performance.
+```{r}
+test2knn_mo_4$table
+test2knn_mo_5$table
+test2knn_mo_6$table
+test2knn_mo_7$table
+test2knn_mo_8$table
+test2knn_mo_9$table
+test2knn_mo_10$table
+```
+
+when k=10, the result of confusion matrix is the best, with highest true negative. 
+
+Most of the time, the number of true negative with k=2t-1 is higher than one with k=2t, and  the number of true positive with k=2t-1 is lower than one with k=2t.
+
+For the accuracy, one with k=2t is the same with one with k=2t+1.
+
+
+
+
+
+
+
+
+
+
+
+
+

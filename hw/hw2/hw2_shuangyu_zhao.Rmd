@@ -1,0 +1,233 @@
+---
+title: "hw2_shuangyu_zhao"
+author: "shuangyu_zhao"
+date: "2023-01-22"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+1.
+```{r}
+library(sqldf)
+customer_his <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/Customer_History.csv")
+head(customer_his)
+```
+
+a.
+```{r}
+year_df <- data.frame(year = c(2005:2022))
+customer_history_model <- sqldf("SELECT customer_his.*, year_df.*
+                                FROM customer_his
+                                INNER JOIN year_df
+                                WHERE year_df.year >= customer_his.First_year
+                                AND year_df.year <= customer_his.Last_year")
+head(customer_history_model)
+```
+```{r}
+customer_churn_target <- sqldf("SELECT Customer, year, Year_Born, Male_Female, (year = Last_year) AS target
+                               FROM customer_history_model")
+head(customer_churn_target, 11)
+# yes--1;  no--0
+```
+
+b.
+i.
+```{r}
+customer_churn_target_age <- sqldf("SELECT customer_churn_target.*, (year-Year_Born) AS customer_age
+                                   FROM customer_churn_target")
+head(customer_churn_target_age)
+```
+
+ii.
+```{r}
+customer_churn_target_age_num_year <- sqldf("SELECT customer_churn_target_age.*,
+                                        (customer_history_model.year-customer_history_model.First_Year+1) AS num_year_cus
+                                        FROM customer_churn_target_age    
+                                        INNER JOIN customer_history_model
+                                        ON customer_history_model.Customer = customer_churn_target_age.Customer
+                                        AND customer_history_model.year = customer_churn_target_age.year")
+head(customer_churn_target_age_num_year, 12)
+```
+
+
+iii.
+```{r}
+complaint_his <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/Complaint_History.csv")
+sum_complain <- sqldf("SELECT CustomerID, ComplaintYear, COUNT(*) AS complaint_times
+                      FROM complaint_his
+                      GROUP BY CustomerID, ComplaintYear")
+head(sum_complain)
+```
+```{r}
+customer_complain <- sqldf("SELECT customer_churn_target_age_num_year.*, sum_complain.complaint_times
+                           FROM customer_churn_target_age_num_year
+                           LEFT JOIN sum_complain
+                           ON sum_complain.ComplaintYear = customer_churn_target_age_num_year.year
+                           AND sum_complain.CustomerID = customer_churn_target_age_num_year.Customer")
+head(customer_complain)
+customer_complain[is.na(customer_complain)]<-0
+head(customer_complain, 11)
+```
+
+
+2.
+```{r}
+order_history <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/Order_History.csv")
+head(order_history)
+dim(order_history)
+```
+a.
+```{r}
+order_his <- sqldf("SELECT CustomerID, Product_ID AS ProductID, Year, Month, SUM(Quantity) AS Quantity_sum
+                   FROM order_history
+                   GROUP BY CustomerID, Product_ID, Month, Year")
+head(order_his)
+```
+
+```{r}
+library(tidyverse)
+order_wide <- pivot_wider(order_his, names_from = Year, values_from = Quantity_sum)
+order_long <- pivot_longer(order_wide, cols = c('2008','2009','2010', '2011', '2012', '2013', '2014', '2015', '2016','2017'), names_to = 'year', values_to = 'Quantity_sum')
+order_wide2 <- pivot_wider(order_long, names_from = Month, values_from = Quantity_sum)
+order_long2 <- pivot_longer(order_wide2, cols = c('1','2','3', '4', '5', '6', '7', '8', '9','10', '11', '12'), names_to = 'month', values_to = 'Quantity_sum')
+head(order_long2, 12)
+```
+```{r}
+target <- sqldf("SELECT *, 
+                CASE 
+                WHEN Quantity_sum != 'NA' THEN 'YES'
+                ELSE 'NO' END target
+                FROM order_long2
+                ORDER BY ProductID, CustomerID, year")
+target <- transform(target, year = as.integer(year), month = as.integer(month))
+head(target)
+dim(target)
+```
+
+b.
+i.
+```{r}
+diff_month <- sqldf("SELECT ta1.CustomerID, ta1.ProductID, ta1.month, ta1.year, ta1.target,
+                    ta2.month AS new_month, ta2.year AS new_year
+                    FROM target AS ta1
+                    INNER JOIN target AS ta2
+                    ON ta1.ProductID = ta2.ProductID AND ta2.CustomerID = ta1.CustomerID
+                    WHERE ta2.target = 'YES'")
+diff_month <- sqldf("SELECT *
+                    FROM diff_month
+                    WHERE (year = new_year AND diff_month.month > diff_month.new_month)
+                    OR year > new_year
+                    ORDER BY CustomerID, ProductID, year, month")
+head(diff_month)
+```
+```{r}
+diff_month_final <- sqldf("SELECT *, (year-new_year)*12+(month-new_month) AS diff
+                          FROM diff_month
+                          ORDER BY CustomerID, ProductID, year")
+head(diff_month_final, 12)
+```
+```{r}
+diff_month_final <- sqldf("SELECT CustomerID, ProductID, Month, year, target, MIN(diff) AS diff_since_last_month
+                          FROM diff_month_final
+                          GROUP BY CustomerID, ProductID, Month, year
+                          ORDER BY CustomerID, ProductID, year, Month")
+head(diff_month_final)
+```
+
+```{r}
+diff_month_final1 <- sqldf("SELECT target.CustomerID, target.ProductID, target.Month, target.year, target.target, 
+                           diff_month_final.diff_since_last_month
+                           FROM target  
+                           LEFT JOIN diff_month_final 
+                           ON diff_month_final.CustomerID = target.CustomerID
+                           AND diff_month_final.ProductID = target.ProductID
+                           AND diff_month_final.year = target.year
+                           AND diff_month_Final.Month = target.Month") 
+head(diff_month_final1, 10)
+dim(diff_month_final1)
+```
+
+
+ii.
+```{r}
+out12 <- diff_month_final1[diff_month_final1$diff_since_last_month>12, ]
+out12 <- sqldf("SELECT *
+      FROM out12
+      WHERE target = 'YES' ")
+dim(out12)
+head(out12)
+```
+
+iii.
+```{r}
+ave_quan<- sqldf("SELECT CustomerID, Product_ID AS ProductID, AVG(Quantity) AS Quantity_ave
+                          FROM order_history
+                          GROUP BY CustomerID, Product_ID")
+head(ave_quan)
+dim(ave_quan)
+
+```
+
+
+3.
+a.
+```{r}
+library(ISLR2)
+summary(OJ)
+head(OJ)
+oj <- OJ
+```
+```{r}
+ave_price <- sqldf("SELECT Purchase, StoreID, 
+                   CASE
+                   WHEN Purchase = 'CH' THEN AVG(SalePriceCH)
+                   ELSE AVG(SalePriceMM)
+                   END ave_price
+                   FROM oj
+                   GROUP BY Purchase, StoreID 
+                   ORDER BY Purchase, StoreID")
+ave_price
+```
+```{r}
+oj_aveprice <- sqldf("SELECT oj.*, ave_price.ave_price
+                     FROM oj
+                     INNER JOIN ave_price
+                     ON ave_price.Purchase = oj.Purchase
+                     AND ave_price.StoreID = oj.StoreID")
+head(oj_aveprice)
+```
+
+
+b. week: 227 ~ 278
+```{r}
+pre_frac <- sqldf("SELECT Purchase, WeekofPurchase, StoreID, WeekofPurchase+1 AS presentweek
+                  FROM oj
+                  ORDER BY StoreID, presentweek")
+head(pre_frac)
+pre_frac <- sqldf("SELECT WeekofPurchase, StoreID, presentweek, 
+CAST(SUM(Purchase = 'MM') AS FLOAT)/CAST(SUM(Purchase = 'MM')+SUM(Purchase = 'CH')AS FLOAT) AS frac_MM
+                  FROM pre_frac
+                  GROUP BY StoreID, presentweek")
+head(pre_frac)
+dim(pre_frac)
+```
+```{r}
+oj_aveprice_fracMM <- sqldf("SELECT oj_aveprice.*, pre_frac.frac_MM AS pre_Frac_MM
+                            FROM oj_aveprice
+                            LEFT JOIN pre_frac
+                            ON oj_aveprice.WeekofPurchase = pre_frac.presentweek
+                            AND oj_aveprice.StoreID = pre_frac.StoreID
+                            ORDER BY Purchase, StoreID, WeekofPurchase")
+head(oj_aveprice_fracMM, 20)
+dim(oj_aveprice_fracMM)
+```
+
+
+
+

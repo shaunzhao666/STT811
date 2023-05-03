@@ -1,0 +1,54 @@
+---
+title: "ica10_shuangyu_zhao"
+author: "shuangyu_zhao"
+date: "2023-02-09"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ISLR2)
+oj <- OJ
+```
+
+
+1.
+```{r}
+split_pro <- 0.75
+n <- length(oj$Purchase)*split_pro
+row_samp <- sample(1:length(oj$Purchase), n, replace = FALSE)
+train <- oj[row_samp, ]
+test <- oj[-row_samp,]
+```
+
+
+2.
+LDA
+```{r}
+library(MASS)
+
+oj_lda_mod <- lda(data = train, Purchase ~ PriceDiff  + LoyalCH)
+summary(oj_lda_mod)
+```
+```{r}
+prediction_test <- predict(oj_lda_mod, test)
+library(caret)
+confusionMatrix(data = prediction_test$class, reference = test$Purchase)
+```
+
+
+QDA
+```{r}
+oj_qda_mod <- qda(data = train, Purchase ~ PriceDiff  + LoyalCH)
+
+prediction_test_q <- predict(oj_qda_mod, test)
+confusionMatrix(data = prediction_test_q$class, reference = test$Purchase)
+```
+
+
+

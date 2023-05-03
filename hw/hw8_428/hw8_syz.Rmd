@@ -1,0 +1,428 @@
+---
+title: "hw8_shuangyu_zhao"
+author: "Shuangyu Zhao"
+date: "2023-04-23"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(keras)
+library(caret)
+library(sqldf)
+library(ggplot2)
+library(neuralnet)
+library(ISLR2)
+library(xgboost)
+```
+
+
+1. For the star dataset,
+```{r}
+star <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/star_classification.csv")
+star <- na.omit(star)
+head(star)
+
+```
+```{r}
+sqldf("SELECT DISTINCT class
+      FROM star")
+```
+
+
+a. Create a 70/30 train test split.
+```{r}
+star$y <- ifelse(star$class == "GALAXY", 1, ifelse(star$class == "QSO", 2, 3))
+split_pct <- 0.7
+n <- split_pct * length(star$obj_ID)
+set.seed(123)
+row_samp <- sample(1:length(star$obj_ID), n, replace = FALSE)
+train_star <- star[row_samp, ]
+test_star <- star[-row_samp, ]
+
+```
+
+b. Create a neural network model for type(class), using u, g, z, and Redshift. Use a single hidden layer with 3 nodes and tanh activation functions. Compute the confusion matrix for the train dataset.(CNN)
+
+
+```{r}
+star_nn_1 <- neuralnet(y~ u+g+z+redshift, data = train_star,act.fct = 'tanh', hidden = c(3), linear.output = FALSE)
+
+y_pred_1b <- neuralnet::compute(star_nn_1, test_star)
+pred_labels_1b <- apply(y_pred_1b$net.result, 1, which.max)
+
+
+accuracy_1b <- sum(pred_labels_1b == test_star$y) / length(test_star$y)
+print(paste0("Accuracy: ", round(accuracy_1b, 3)))
+```
+
+c. Re-create the model predictions in (b) with algebraic operations.
+
+```{r}
+X_1c <- cbind(test_star$u,test_star$g,test_star$z,test_star$redshift)
+
+logi <- function(x) 1/(1 + exp(-1*x))
+
+n1 <- logi(star_nn_1$result.matrix[4] 
+           + star_nn_1$result.matrix[5]*X_1c[,1] 
+           + star_nn_1$result.matrix[6]*X_1c[,2] 
+           + star_nn_1$result.matrix[7]*X_1c[,3] 
+           + star_nn_1$result.matrix[8]*X_1c[,4])
+n2 <- logi(star_nn_1$result.matrix[9] 
+           + star_nn_1$result.matrix[10]*X_1c[,1] 
+           + star_nn_1$result.matrix[11]*X_1c[,2] 
+           + star_nn_1$result.matrix[12]*X_1c[,3] 
+           + star_nn_1$result.matrix[13]*X_1c[,4])
+n3 <- logi(star_nn_1$result.matrix[14] 
+           + star_nn_1$result.matrix[15]*X_1c[,1] 
+           + star_nn_1$result.matrix[16]*X_1c[,2] 
+           + star_nn_1$result.matrix[17]*X_1c[,3] 
+           + star_nn_1$result.matrix[18]*X_1c[,4])
+
+test_1d <- cbind(n1, n2, n3)
+
+pr <- logi(star_nn_1$result.matrix[19] + star_nn_1$result.matrix[20]*n1 + star_nn_1$result.matrix[21]*n2 + star_nn_1$result.matrix[22]*n3)
+
+head(cbind(pr,predict(star_nn_1, test_star)[,1]))
+```
+
+d. Create an xgboost model using the Texas 2-step. Use the outputs of the hidden layer from (c) as inputs to an xgboost model to create predictions for Class. Compare the results to what we get in (b).
+```{r}
+X_1d_train <- cbind(train_star$u, train_star$g, train_star$z, train_star$redshift)
+n1 <- logi(star_nn_1$result.matrix[4] 
+           + star_nn_1$result.matrix[5]*X_1d_train[,1] 
+           + star_nn_1$result.matrix[6]*X_1d_train[,2] 
+           + star_nn_1$result.matrix[7]*X_1d_train[,3] 
+           + star_nn_1$result.matrix[8]*X_1d_train[,4])
+n2 <- logi(star_nn_1$result.matrix[9] 
+           + star_nn_1$result.matrix[10]*X_1d_train[,1] 
+           + star_nn_1$result.matrix[11]*X_1d_train[,2] 
+           + star_nn_1$result.matrix[12]*X_1d_train[,3] 
+           + star_nn_1$result.matrix[13]*X_1d_train[,4])
+n3 <- logi(star_nn_1$result.matrix[14] 
+           + star_nn_1$result.matrix[15]*X_1d_train[,1] 
+           + star_nn_1$result.matrix[16]*X_1d_train[,2] 
+           + star_nn_1$result.matrix[17]*X_1d_train[,3] 
+           + star_nn_1$result.matrix[18]*X_1d_train[,4])
+train_1d <- cbind(n1,n2,n3)
+
+train_star$y <- as.integer(factor(train_star$y)) - 1
+test_star$y <- as.integer(factor(test_star$y)) - 1
+
+star_xgb <- xgboost(data = data.matrix(train_1d), nrounds = 100, max_depth = 2, eta = 0.3, 
+                    label = train_star$y, objective = "multi:softmax", num_class = 3)
+```
+```{r}
+pred_1d <- predict(star_xgb, as.matrix(test_1d[]))
+pred_labels_1d <- max.col(pred_1d) - 1
+
+# Evaluate the accuracy of the predictions
+accuracy_1d <- sum(pred_labels_1d == test_star$y) / length(test_star$y)
+print(paste0("Accuracy: ", round(accuracy_1d, 3)))
+```
+
+
+
+
+2. Fit a neural network to the Default data. Use a single hidden layer with 10 units, and dropout regularization. Have a look at Labs 10.9.1-10.9.2 for guidance. Compare the results from using different dropout regularization rates.
+```{r}
+default <- na.omit(Default)
+head(default)
+```
+```{r}
+split_pct <- 0.7
+n <- split_pct * length(default$default)
+set.seed(123)
+row_samp <- sample(1:length(default$default), n, replace = FALSE)
+train_default <- default[row_samp, ]
+test_default <- default[-row_samp, ]
+```
+
+```{r}
+default_train_feature <- as.matrix(train_default[, c(3, 4)])
+default_test_feature <- as.matrix(test_default[, c(3, 4)])
+
+default_train_target <- ifelse(train_default$student == "Yes", 1, 0)
+default_test_target <- ifelse(test_default$student == "Yes", 1, 0)
+default_train_target_onehot <- to_categorical(default_train_target, 2)
+default_test_target_onehot <- to_categorical(default_test_target, 2)
+```
+
+
+```{r}
+# drop out rate = 0.1
+model_nn_2_01 <- keras_model_sequential() %>%
+  layer_dense(units = 10, activation = "relu", input_shape =c(2)) %>%
+  layer_dropout(rate = 0.1) %>%
+  layer_dense(units = 2, activation = "softmax")
+
+model_nn_2_01 %>% compile(loss = "categorical_crossentropy", optimizer = optimizer_rmsprop(), metrics = c("accuracy"))
+                    
+system.time(
+  history <- model_nn_2_01 %>%
+    fit(default_train_feature, default_train_target_onehot, epochs = 30, batch_size = 128,
+        validation_split = 0.2)
+)
+
+plot(history, smooth = FALSE)
+```
+```{r}
+test_pred_2_01 <-  predict(model_nn_2_01, default_test_feature)
+test_pred_2_01_label <- apply(test_pred_2_01, 1, which.max) - 1
+train_cm <- confusionMatrix(data =as.factor(test_pred_2_01_label), reference = as.factor(default_test_target))
+ggplot(data = data.frame(train_cm$table), aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix(drop out rate = 0.1)",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+```{r}
+# drop out rate = 0.3
+model_nn_2_03 <- keras_model_sequential() %>%
+  layer_dense(units = 10, activation = "relu", input_shape =c(2)) %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 2, activation = "softmax")
+
+model_nn_2_03 %>% compile(loss = "categorical_crossentropy", optimizer = optimizer_rmsprop(), metrics = c("accuracy"))
+                    
+system.time(
+  history <- model_nn_2_03 %>%
+    fit(default_train_feature, default_train_target_onehot, epochs = 30, batch_size = 128,
+        validation_split = 0.2)
+)
+
+plot(history, smooth = FALSE)
+```
+
+```{r}
+test_pred_2_03 <-  predict(model_nn_2_03, default_test_feature)
+test_pred_2_03_label <- apply(test_pred_2_03, 1, which.max) - 1
+train_cm <- confusionMatrix(data =as.factor(test_pred_2_03_label), reference = as.factor(default_test_target))
+ggplot(data = data.frame(train_cm$table), aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix(drop out rate = 0.3)",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# drop out rate = 0.5
+model_nn_2_05 <- keras_model_sequential() %>%
+  layer_dense(units = 10, activation = "relu", input_shape =c(2)) %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 2, activation = "softmax")
+
+model_nn_2_05 %>% compile(loss = "categorical_crossentropy", optimizer = optimizer_rmsprop(), metrics = c("accuracy"))
+                    
+system.time(
+  history <- model_nn_2_05 %>%
+    fit(default_train_feature, default_train_target_onehot, epochs = 30, batch_size = 128,
+        validation_split = 0.2)
+)
+
+plot(history, smooth = FALSE)
+```
+```{r}
+test_pred_2_05 <-  predict(model_nn_2_05, default_test_feature)
+test_pred_2_05_label <- apply(test_pred_2_05, 1, which.max) - 1
+train_cm <- confusionMatrix(data =as.factor(test_pred_2_05_label), reference = as.factor(default_test_target))
+ggplot(data = data.frame(train_cm$table), aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix(drop out rate = 0.5)",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+
+3. Use the code in ISLR1 Section 10.9.3 to create a CNN for the CIFAR data. Compare the accuracy results to 4 or 5 modifications of your choice, such as:
+```{r}
+cifar100 <- dataset_cifar100()
+x_train <- cifar100$train$x
+y_train <- cifar100$train$y
+x_test <- cifar100$test$x
+y_test <- cifar100$test$y
+```
+
+```{r}
+x_train_3 <- x_train/255
+x_test_3 <- x_test/255
+y_train_3 <- to_categorical(y_train, 100)
+y_test_3 <- to_categorical(y_test, 100)
+```
+```{r}
+#model_3 <- keras_model_sequential() %>%
+#  layer_conv_2d(filters = 32, kernel_size = c(3, 3), padding = "same", activation = "relu", input_shape = c(32, 32, 3)) %>%
+#  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+#  layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+#  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+#  layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+#  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+#  layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+#  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+#  layer_flatten() %>%
+#  layer_dropout(rate = 0.5) %>%
+#  layer_dense(units = 512, activation = "relu") %>%
+#  layer_dense(units = 100, activation = "softmax")
+```
+
+
+a. Changing max pooling to average pooling
+```{r}
+model_a <- keras_model_sequential() %>%
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), padding = "same", activation = "relu", input_shape = c(32, 32, 3)) %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_flatten() %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 512, activation = "relu") %>%
+  layer_dense(units = 100, activation = "softmax")
+
+summary(model_a)
+```
+```{r}
+model_a %>% compile(loss = "categorical_crossentropy", optimizer = optimizer_rmsprop(), metrics = c("accuracy"))
+history <- model_a %>% fit(x_train_3, y_train_3, epochs = 30, batch_size = 128, validation_split = 0.2)
+```
+```{r}
+accuracy <- function(pred, truth)
+  mean(drop(pred) == drop(truth))
+y_pred_a <- predict(model_a, x_test_3)
+accuracy(y_pred_a, y_test_3)
+```
+```{r}
+plot(history)
+```
+
+
+b. Change to pooling size
+```{r}
+model_b <- keras_model_sequential() %>%
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), padding = "same", activation = "relu", input_shape = c(32, 32, 3)) %>%
+  layer_average_pooling_2d(pool_size = c(3, 3)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_flatten() %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 512, activation = "relu") %>%
+  layer_dense(units = 100, activation = "softmax")
+
+summary(model_b)
+```
+```{r}
+model_b %>% compile(loss = "categorical_crossentropy", optimizer = optimizer_rmsprop(), metrics = c("accuracy"))
+history <- model_b %>% fit(x_train_3, y_train_3, epochs = 10, batch_size = 128, validation_split = 0.2)
+y_pred_b <- predict(model_b, x_test_3)
+accuracy(y_pred_b, y_test_3)
+```
+```{r}
+plot(history)
+```
+
+
+c. Varying the dropout rate
+```{r}
+model_c <- keras_model_sequential() %>%
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), padding = "same", activation = "relu", input_shape = c(32, 32, 3)) %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same", activation = "relu") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_flatten() %>%
+  layer_dropout(rate = 0.1) %>%
+  layer_dense(units = 512, activation = "relu") %>%
+  layer_dense(units = 100, activation = "softmax")
+
+summary(model_c)
+```
+```{r}
+model_c %>% compile(loss = "categorical_crossentropy", optimizer = optimizer_rmsprop(), metrics = c("accuracy"))
+history <- model_c %>% fit(x_train_3, y_train_3, epochs = 30, batch_size = 128, validation_split = 0.2)
+y_pred_c <- predict(model_c, x_test_3)
+accuracy(y_pred_c, y_test_3)
+```
+```{r}
+plot(history)
+```
+
+
+
+d. Changing the activation function to softmax
+```{r}
+model_d <- keras_model_sequential() %>%
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), padding = "same", activation = "softmax", input_shape = c(32, 32, 3)) %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), padding = "same", activation = "softmax") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 128, kernel_size = c(3, 3), padding = "same", activation = "softmax") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 256, kernel_size = c(3, 3), padding = "same", activation = "softmax") %>%
+  layer_average_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_flatten() %>%
+  layer_dropout(rate = 0.1) %>%
+  layer_dense(units = 512, activation = "softmax") %>%
+  layer_dense(units = 100, activation = "softmax")
+
+summary(model_d)
+```
+```{r}
+model_d %>% compile(loss = "categorical_crossentropy", optimizer = optimizer_rmsprop(), metrics = c("accuracy"))
+history <- model_d %>% fit(x_train_3, y_train_3, epochs = 30, batch_size = 128, validation_split = 0.2)
+y_pred_d <- predict(model_d, x_test_3)
+accuracy(y_pred_d, y_test_3)
+```
+
+```{r}
+plot(history)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

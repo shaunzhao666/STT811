@@ -1,0 +1,298 @@
+---
+title: "hw3"
+author: "shuangyu_zhao"
+date: "2023-02-03"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1.
+a.
+$$-6 + X_1\times0.05+X_2\times1=Y$$
+$$p =\frac{1}{1+e^{ -(-6 + 40 \times 0.05 + 3.5 * 1)}} =  0.3775$$
+So, the probability is 37.75%.
+
+b.
+
+$$p = 0.5 = \frac{1}{1+e^{ -(-6 + X_1 \times 0.05 + 3.5 * 1)}}$$
+$$-6 + X_1 \times 0.05 + 3.5 * 1 = 0$$
+$$X_1=50h$$
+This student should study 50h.
+
+
+2. odd
+a. 
+$$p/(1-p)=0.37$$
+$$p=0.27$$
+b. 
+$$p/(1-p) = 0.16/(1-0.16)=0.19$$
+
+3.
+a.
+```{r}
+auto <- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/Auto.csv")
+head(auto)
+median(auto$mpg)
+```
+```{r}
+auto$mpg01 <- ifelse(auto$mpg > median(auto$mpg), 1, 0)
+head(auto, 10)
+```
+
+b.
+```{r}
+barplot(table(auto$mpg01))
+```
+
+the data are balanced.
+```{r}
+library(dplyr)
+library(caret)
+glimpse(auto)
+```
+numeric: mpg, displacement, horsepower, weight, acceleration, year
+categoric: cylinders, origin, name
+```{r}
+auto$horsepower <- as.numeric(auto$horsepower)
+glimpse(auto)
+```
+for numeric
+```{r}
+# displacement and mpg01
+library(ggplot2)
+ggplot(data =auto, aes(x = displacement)) + geom_histogram(bins = 30) + facet_grid(.~mpg01)
+quantile(filter(auto, mpg01 == 1)$displacement, seq(0,1, by=0.1))
+quantile(filter(auto, mpg01 == 0)$displacement, seq(0,1, by=0.1))
+```
+```{r}
+# horsepower and mpg01
+ggplot(data =auto, aes(x = horsepower)) + geom_histogram(bins = 30) + facet_grid(.~mpg01)
+quantile(filter(auto, mpg01 == 1)$horsepower, seq(0,1, by=0.1), na.rm=TRUE)
+quantile(filter(auto, mpg01 == 0)$horsepower, seq(0,1, by=0.1), na.rm=TRUE)
+```
+```{r}
+# weight and mpg01
+ggplot(data =auto, aes(x = weight)) + geom_histogram(bins = 30) + facet_grid(.~mpg01)
+quantile(filter(auto, mpg01 == 1)$weight, seq(0,1, by=0.1), na.rm=TRUE)
+quantile(filter(auto, mpg01 == 0)$weight, seq(0,1, by=0.1), na.rm=TRUE)
+```
+```{r}
+# acceleration and mpg01
+ggplot(data =auto, aes(x = acceleration)) + geom_histogram(bins = 30) + facet_grid(.~mpg01)
+quantile(filter(auto, mpg01 == 1)$acceleration, seq(0,1, by=0.1), na.rm=TRUE)
+quantile(filter(auto, mpg01 == 0)$acceleration, seq(0,1, by=0.1), na.rm=TRUE)
+```
+```{r}
+ggplot(data = auto, aes(x = year)) + geom_bar() + facet_grid(.~mpg01)
+quantile(filter(auto, mpg01 == 1)$year, seq(0,1, by=0.1), na.rm=TRUE)
+quantile(filter(auto, mpg01 == 0)$year, seq(0,1, by=0.1), na.rm=TRUE)
+```
+
+for categorical
+```{r}
+# cylinders and mpg01
+ggplot(data = auto, aes(x = cylinders)) + geom_bar() + facet_grid(.~mpg01)
+```
+
+```{r}
+ggplot(data = auto, aes(x = origin)) + geom_bar() + facet_grid(.~mpg01)
+```
+
+displacement, horsepower, weight, cylinder,origin are useful for prediction
+
+
+c.
+```{r}
+# train-test split
+
+split_pro <- 0.75
+n <- length(auto$mpg)*split_pro
+row_samp <- sample(1:length(auto$mpg), n, replace = FALSE)
+train <- auto[row_samp,]
+test <- auto[-row_samp,]
+```
+
+
+d.
+```{r}
+mod <- glm(data = train, mpg01 ~ displacement + horsepower + weight + acceleration + year+ cylinders + origin, family = binomial)
+summary(mod)
+```
+```{r}
+mod2 <- glm(data = train, mpg01 ~ weight + year , family = binomial)
+summary(mod2)
+```
+```{r}
+prediction <- predict(mod2, test, type = "response")
+cofm <- confusionMatrix(data =as.factor(as.integer(2*prediction)), reference = as.factor(test$mpg01))
+```
+```{r}
+test_error <- 1-cofm$overall["Accuracy"]
+print(paste0("test error: ", test_error))
+```
+
+
+
+e.
+```{r}
+p <- 1/(1 + exp(-(mod2$coefficients[1] + mod2$coefficients[2]*test$weight + mod2$coefficients[3]*test$year)))
+prediction_direct <- ifelse(p<0.5, 0, 1)
+```
+```{r}
+prediction_direct
+```
+
+```{r}
+confusionMatrix(data = factor(prediction_direct), reference = factor(test$mpg01))
+```
+
+
+
+f.
+The accuracies of these two confusion matrix are similar. For train dataset, it is 0.9024, and for test dataset, it is 0.93, which is a little bit higher than 0.9024. That means the accuracies of predictions are similar.
+```{r}
+library(caret)
+# train dataset
+confusionMatrix(data = as.factor(as.integer(2*mod2$fitted.values)), reference = as.factor(train$mpg01))
+
+# test dataset 
+prediction <- predict(mod2, test, type = "response")
+confusionMatrix(data = as.factor(as.integer(2*prediction)), reference = as.factor(test$mpg01))
+```
+g.
+```{r}
+sum_mod <- summary(mod2)
+```
+```{r}
+sum_mod$coefficients
+```
+z value = Estimate/Std.Error
+
+```{r}
+CI_intercept<-  sum_mod$coefficients[1,1] + sum_mod$coefficients[1,2] * qnorm(c(0.025, 0.975))
+CI_weight <-  sum_mod$coefficients[2,1]  + sum_mod$coefficients[2,2] * qnorm(c(0.025, 0.975))
+CI_year <- sum_mod$coefficients[3,1]  + sum_mod$coefficients[3,2] * qnorm(c(0.025, 0.975))
+CI_intercept
+CI_weight
+CI_year
+```
+
+
+h.
+```{r}
+coeff_inter <- rep(0, 1000)
+coeff_wei <- rep(0, 1000)
+coeff_yea <- rep(0, 1000)
+n <- nrow(auto)
+for(i in 1:1000){
+  row_samp <- sample(1:n, replace = TRUE)
+  auto_samp <- auto[row_samp,]
+  temp_mod <- glm(data = auto_samp, mpg01 ~ weight + year, family = binomial)
+  coeff_inter[i] <- temp_mod$coefficients[1]
+  coeff_wei[i] <- temp_mod$coefficients[2]
+  coeff_yea[i] <- temp_mod$coefficients[3]
+}
+quantile(coeff_inter, c(0.025, 0.975))
+quantile(coeff_wei, c(0.025, 0.975))
+quantile(coeff_yea, c(0.025, 0.975))
+```
+
+i.
+```{r}
+contourdata <- data.frame("weight" = as.numeric(), "year" = as.integer())
+for(i in min(auto$weight):max(auto$weight)){
+  for(j in min(auto$year):max(auto$year)){
+    contourdata[nrow(contourdata)+1,]$weight <- i
+    contourdata[nrow(contourdata),]$year <- j
+      
+  }
+}
+contourdata$Predict <- predict(mod2, contourdata, type = "response")
+
+ggplot(data = contourdata, aes(x = weight, y = year, z = Predict)) + geom_contour(aes(color = factor(..level..)))
+```
+
+
+
+4.
+```{r}
+churn<- read.csv("/Users/apple/Desktop/STT811 appl_stat_model/data/customer_churn.csv")
+head(churn)
+```
+
+a.
+```{r}
+barplot(table(churn$Churn))
+```
+for numeric
+```{r}
+ggplot(data =churn, aes(x = Age)) + geom_histogram(bins = 30) + facet_grid(.~Churn)
+quantile(filter(churn, Churn == 1)$Age, seq(0,1, by=0.1), na.rm=TRUE)
+quantile(filter(churn, Churn == 0)$Age, seq(0,1, by=0.1), na.rm=TRUE)
+```
+```{r}
+ggplot(data =churn, aes(x = Total_Purchase)) + geom_histogram(bins = 30) + facet_grid(.~Churn)
+quantile(filter(churn, Churn == 1)$Total_Purchase, seq(0,1, by=0.1), na.rm=TRUE)
+quantile(filter(churn, Churn == 0)$Total_Purchase, seq(0,1, by=0.1), na.rm=TRUE)
+```
+```{r}
+ggplot(data =churn, aes(x = Years)) + geom_histogram(bins = 30) + facet_grid(.~Churn)
+quantile(filter(churn, Churn == 1)$Years, seq(0,1, by=0.1), na.rm=TRUE)
+quantile(filter(churn, Churn == 0)$Years, seq(0,1, by=0.1), na.rm=TRUE)
+```
+
+
+for categorical
+```{r}
+ggplot(data =churn, aes(x = Num_Sites)) + geom_histogram(bins = 30) + facet_grid(.~Churn)
+```
+```{r}
+ggplot(data =churn, aes(x = Account_Manager)) + geom_histogram(bins = 30) + facet_grid(.~Churn)
+```
+
+b.
+```{r}
+# train-test split
+
+split_pro <- 0.5
+n <- length(churn$Names)*split_pro
+row_samp <- sample(1:length(churn$Names), n, replace = FALSE)
+train <- churn[row_samp,]
+test <- churn[-row_samp,]
+head(train)
+```
+
+
+c.
+```{r}
+mod0 <- glm(data = train, Churn ~ Age + Total_Purchase + Account_Manager + Years + Num_Sites, family = binomial)
+summary(mod0)
+```
+
+```{r}
+mod1 <- glm(data = train, Churn ~ Years + Num_Sites, family = binomial)
+summary(mod1)
+```
+```{r}
+
+confusionMatrix(data = as.factor(as.integer(2*mod1$fitted.values)), reference = as.factor(train$Churn))
+```
+```{r}
+prediction <- predict(mod1, test, type = "response")
+confusionMatrix(data = as.factor(as.integer(2*prediction)), reference = as.factor(test$Churn))
+```
+The accuracy of model towards test datasets is higher than one towards train datasets, ane p-value is much higher, too. For sensitivity, specificity and so on, the values of test dataset is much better than train dataset.
+
+
+
+
+
+
+
+
+

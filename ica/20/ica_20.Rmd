@@ -1,0 +1,65 @@
+---
+title: "ica20_syz"
+author: "Shuangyu Zhao"
+date: "2023-03-31"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(forecast)
+```
+```{r}
+beer <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/beer.csv")
+tail(beer)
+```
+
+```{r}
+beerts <- ts(beer$Monthly.beer.production, frequency = 12, start = c(1956, 1), end = c(1995, 8))
+```
+```{r}
+plot(beerts)
+```
+```{r}
+naive_beer <- naive(beerts)
+plot(naive_beer)
+mean(abs(na.omit(naive_beer$residuals))/beerts)
+```
+
+```{r}
+snaive_beer <- snaive(beerts)
+plot(snaive_beer)
+mean(abs(na.omit(snaive_beer$residuals))/beerts)
+```
+```{r}
+ses_beer <- ses(beerts)
+plot(ses_beer)
+mean(abs(na.omit(ses_beer$residuals))/beerts)
+```
+```{r}
+holt_beer <- holt(beerts)
+plot(holt_beer)
+mean(abs(na.omit(holt_beer$residuals))/beerts)
+```
+```{r}
+hw_beer <- hw(beerts)
+plot(hw_beer)
+mean(abs(na.omit(hw_beer$residuals))/beerts)
+```
+
+
+
+
+
+
+
+
+
+
+
+

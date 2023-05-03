@@ -1,0 +1,121 @@
+---
+title: "ica16_sy_z"
+author: "shuangyu_zhao"
+date: "2023-03-16"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ISLR2)
+library(xgboost)
+library(caret)
+```
+
+1.
+```{r}
+# create tuning grid
+tune_grid <- expand.grid(nrounds = seq(100,500, by = 100), max_depth = 1:4, eta = seq(.01, .4, by = 0.01), gamma=0, colsample_bytree=1, min_child_weight=1, subsample=1)
+
+```
+
+2.
+```{r}
+head(OJ)
+```
+
+```{r}
+x_train <- data.matrix(OJ[,c(2:18)])
+y_train <- as.factor(OJ$Purchase)
+
+```
+```{r}
+tune_control <- caret::trainControl(
+  method = "cv", # cross-validation
+  number = 8, # with n folds 
+  #index = createFolds(tr_treated$Id_clean), # fix the folds
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE # FALSE for reproducible results 
+)
+
+xgb_tune <- caret::train(
+  x = x_train,
+  y = y_train,
+  trControl = tune_control,
+  tuneGrid = tune_grid,
+  method = "xgbTree",
+  verbose = TRUE,
+)
+```
+
+
+3.
+```{r}
+xgb_tune$bestTune
+```
+```{r}
+y_train01 <- ifelse(y_train == "MM", 1, 0)
+```
+
+```{r}
+best_model <- xgboost(data = x_train, nrounds = 100, max_depth = 1, eta = 0.11, label = y_train01, objective = "binary:logistic")
+```
+
+4.
+```{r}
+tuneplot <- function(x, probs = .90) {
+  ggplot(x) +
+    coord_cartesian(ylim = c(quantile(xgb_tune$results$Accuracy, probs = probs), min(xgb_tune$results$Accuracy))) +
+    theme_bw()
+}
+
+tuneplot(xgb_tune)
+```
+```{r}
+xgb.importance(colnames(OJ[,c(2:18)]), model = best_model)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

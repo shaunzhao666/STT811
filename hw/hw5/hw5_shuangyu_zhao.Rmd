@@ -1,0 +1,209 @@
+---
+title: "hw5_shuangyu_zhao"
+author: "shuangyu_zhao"
+date: "2023-03-14"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(ISLR2)
+library(tidyverse)
+library(tree)
+library(caret)
+library(e1071)
+```
+
+
+1
+```{r}
+default_df <- Default
+glimpse(default_df)
+```
+(a) using glm() and summary() to get the 95% confidence interval of parameters
+```{r}
+split_pct <- 0.7
+n <- length(default_df$default)*split_pct # train size
+row_samp <- sample(1:length(default_df$default), n, replace = FALSE)
+train1 <- default_df[row_samp,]
+test1 <- default_df[-row_samp,]
+model1 <- glm(data = train1, default ~ balance + income, family = binomial)
+summary(model1)
+```
+the 95% CI of parameter:
+```{r}
+para_bal <- summary(model1)$coef[2, 1]
+para_inc <- summary(model1)$coef[3, 1]
+se_bal <- summary(model1)$coef[2, 2]
+se_inc <- summary(model1)$coef[3, 2]
+```
+```{r}
+CI_bal <- para_bal + se_bal * qt(c(0.025, 0.975), n-2)
+print(paste0("the confidence of interval of balance's parameter: ", CI_bal[1], '~',CI_bal[2]))
+```
+
+```{r}
+CI_inc <- para_inc + se_inc * qt(c(0.025, 0.975), n-2)
+print(paste0("the confidence of interval of income's parameter: ", CI_inc[1], '~',CI_inc[2]))
+```
+
+(b) get the 95% confidence interval of parameters by bootstrapping
+```{r}
+coeff_bal <- rep(0, 1000)
+coeff_inc <- rep(0, 1000)
+n <- nrow(default_df)
+for(i in 1:1000){
+  row_samp <- sample(1:n, replace = TRUE)
+  samp <- default_df[row_samp,]
+  model2 <- glm(data = samp, default ~ balance + income, family = binomial)
+  coeff_bal[i] <- model2$coefficients[2]
+  coeff_inc[i] <- model2$coefficients[3]
+}
+
+```
+```{r}
+print(paste0("the confidence of interval of balance's parameter: ", quantile(coeff_bal, 0.025), '~', quantile(coeff_bal, 0.975)))
+print(paste0("the confidence of interval of income's parameter: ", quantile(coeff_inc, 0.025), '~', quantile(coeff_inc, 0.975)))
+```
+
+
+2
+(a) 
+![Alt Text](/Users/apple/Desktop/STT811_appl_stat_model/hw/hw5/2_a.jpeg)
+
+
+(b)
+![Alt Text](/Users/apple/Desktop/STT811_appl_stat_model/hw/hw5/2_b.png)
+
+
+3
+(a)
+```{r}
+set.seed(123)
+row_num <- sample(1:length(OJ$Purchase), 800, replace = FALSE)
+train_3 <- OJ[row_num, ]
+test_3 <- OJ[-row_num, ]
+```
+
+(b)
+```{r}
+glimpse(train_3)
+```
+
+```{r}
+model3 <- tree(data = train_3, Purchase ~ WeekofPurchase + StoreID + PriceCH + PriceMM + DiscCH + DiscMM + SpecialCH + SpecialMM + LoyalCH + SalePriceMM + SalePriceCH + PriceDiff + Store7 + PctDiscMM + PctDiscCH + ListPriceDiff + STORE, method = "class")
+summary(model3)
+```
+```{r}
+print(paste0("train error rate: ", 0.165))
+```
+
+and this model has 8 terminal nodes
+
+(c)
+```{r}
+model3
+```
+if the rows follow the rule in 2), then go to 4) or 5), or follow the rule in 3), then goto 6) or 7)
+
+(d)
+```{r}
+plot(model3)
+text(model3)
+```
+if yes, go left. if not, go right.
+
+(e)
+```{r}
+predict3 <- predict(model3, test_3, type = 'class')
+confusionMatrix(data = predict3, reference = as.factor(test_3$Purchase))
+```
+```{r}
+print(paste0("the test error rate: ", 1-confusionMatrix(data = predict3, reference = as.factor(test_3$Purchase))$overall['Accuracy']))
+
+```
+
+
+4
+(a) logistic regression model
+```{r}
+model4a <- glm(data = train_3, Purchase ~ PriceDiff + LoyalCH, family = binomial)
+```
+
+(b) naive bayes model
+```{r}
+model4b <- naiveBayes(data = train_3, Purchase ~ PriceDiff + LoyalCH)
+```
+
+
+(c) decision tree model
+```{r}
+model4c <- tree(data = train_3, Purchase ~ PriceDiff + LoyalCH, method = "class")
+```
+
+
+(d) esemble the prediction
+```{r}
+predict4a <- predict(model4a, test_3, type = 'response')
+predicted_classes_4a <- ifelse(predict4a > 0.5, "MM", "CH")
+predict4b <- predict(model4b, test_3)
+predict4c <- predict(model4c, test_3, type = 'class')
+```
+
+
+```{r}
+esemble_predict <- rep(0, length(predict4a))
+for(i in 1:length(predict4a)){
+  if ((predicted_classes_4a[i] == "CH") + (predict4b[i] == "CH") + (predict4c[i] == "CH") >= 2 ){
+    esemble_predict[i] <- "CH" 
+  }else{
+    esemble_predict[i] <- "MM"
+  }
+}
+```
+
+```{r}
+# confusion matrix for logistic regression model
+confusionMatrix(data = as.factor(predicted_classes_4a), reference = as.factor(test_3$Purchase))
+```
+```{r}
+# confusion matrix for naive bayes model
+confusionMatrix(data = as.factor(predict4b), reference = as.factor(test_3$Purchase))
+```
+```{r}
+# confusion matrix for decision tree model
+confusionMatrix(data = as.factor(predict4c), reference = as.factor(test_3$Purchase))
+```
+
+```{r}
+# confusion matrix of esembled result
+confusionMatrix(data = as.factor(esemble_predict), reference = as.factor(test_3$Purchase))
+```
+
+logistic regression has highest accuracy. The accuracy of esembled predicted result is in the middle of these results.
+
+5
+```{r}
+predict5 <- matrix(nrow = length(test_3$Purchase), ncol = 0)
+for(i in 1:1000){
+  rows <- sample(1:length(train_3$Purchase), length(train_3$Purchase), replace = TRUE)
+  samp <- train_3[rows,]
+  trees <- tree(data = samp, Purchase ~ WeekofPurchase + StoreID + PriceCH + PriceMM + DiscCH + DiscMM + SpecialCH + SpecialMM + LoyalCH + SalePriceMM + SalePriceCH + PriceDiff + Store7 + PctDiscMM + PctDiscCH + ListPriceDiff + STORE, method = "class")
+  predict5 <- cbind(predict5, predict(trees, test_3)[,1])
+}
+ens <- rowMeans(predict5)
+```
+```{r}
+confusionMatrix(as.factor(ifelse(ens < 0.5, 'MM', 'CH')), reference = test_3$Purchase)
+```
+
+accuracy is higher.
+
+
+
+
+

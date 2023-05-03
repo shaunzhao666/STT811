@@ -1,0 +1,85 @@
+---
+title: "ica18"
+author: "Shuangyu Zhao"
+date: "2023-03-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(e1071)
+library(caret)
+```
+
+```{r}
+heart <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/Heart.csv")
+heart <- na.omit(heart)
+heart$target <- ifelse(heart$AHD == "yes", 1, 0)
+```
+
+```{r}
+
+split_pct <- 0.7
+n <- length(heart$X)*split_pct # train size
+row_samp <- sample(1:length(heart$X), n, replace = FALSE)
+train <- heart[row_samp,]
+test <- heart[-row_samp,]
+
+```
+```{r}
+head(train)
+```
+
+
+
+```{r}
+train <- na.omit(train)
+train$target <- ifelse(train$AHD == "Yes", 1, 0)
+test$target <- ifelse(test$AHD == "Yes", 1, 0)
+svm_mod_linear <- svm(target ~ RestBP + MaxHR, data = train, type = 'C-classification', kernel = 'linear', cost = 1, gamma = 0.5)
+# other kernel options: polynomial, radial, sigmoid, linear
+```
+
+```{r}
+pred <- predict(svm_mod_linear, test)
+confusionMatrix(as.factor(pred), as.factor(test$target))
+```
+```{r}
+svm_mod_polynomial <- svm(target ~ RestBP + MaxHR, data = train, type = 'C-classification', kernel = 'polynomial', cost = 1, gamma = 0.5)
+pred <- predict(svm_mod_polynomial, test)
+confusionMatrix(as.factor(pred), as.factor(test$target))
+```
+```{r}
+tune_grid <- expand.grid( C = seq(1, 10, by=2), sigma = seq(0.01, 0.1, by=0.02))
+tune_control <- caret::trainControl(
+  method = "cv", # cross-validation
+  number = 8, # with n folds 
+  #index = createFolds(tr_treated$Id_clean), # fix the folds
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE # FALSE for reproducible results 
+)
+svm_tune <- caret::train(
+  x = train[, c(5, 9)],
+  y = train$AHD,
+  trControl = tune_control,
+  tuneGrid = tune_grid,
+  method = "svmRadial",
+  verbose = TRUE,
+)
+```
+```{r}
+tuneplot <- function(x, probs = .90) {
+  ggplot(x) +
+    coord_cartesian(ylim = c(quantile(svm_tune$results$Accuracy, probs = probs), min(svm_tune$results$Accuracy))) +
+    theme_bw()
+}
+tuneplot(svm_tune)
+```
+```{r}
+svm_mod_linear2 <- svm(target ~ RestBP + MaxHR, data = train, type = 'C-classification', kernel = 'linear', cost = 1, gamma = 0.01)
+pred <- predict(svm_mod_linear2, test)
+confusionMatrix(as.factor(pred), as.factor(test$target))
+```
+

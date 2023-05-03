@@ -1,0 +1,93 @@
+---
+title: "hw7_shuangyu_zhao"
+author: "Shuangyu Zhao"
+date: "2023-04-10"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(ISLR2)
+library(sqldf)
+library(forecast)
+library(TSA)
+```
+
+1.
+a.
+assume 52 weeks per year.
+```{r}
+today_ts <- ts(data = Weekly$Today, frequency = 52)
+```
+
+b.
+```{r}
+arima_model <- auto.arima(today_ts)
+arima_model
+```
+
+c.
+```{r}
+mean(abs(na.omit(arima_model$residuals)/today_ts))
+```
+
+d.
+```{r}
+mean_val <- mean(Weekly$Today)
+diff_Val <- Weekly$Today - mean_val
+length(diff_Val)
+```
+```{r}
+lag1_diff <- diff_Val[3:1088]
+lag2_diff <- diff_Val[2:1087]
+lag3_diff <- diff_Val[1:1086]
+target <-Weekly$Today[4:1089]
+predict <- arima_model$coef[1]*lag1_diff + arima_model$coef[2]*lag2_diff + + arima_model$coef[3]*lag3_diff + arima_model$coef[4]
+mean(abs(predict - target/target))
+```
+
+e.
+```{r}
+lag2_diff <- diff_Val[3:1088]
+lag3_diff <- diff_Val[2:1087]
+lag4_diff <- diff_Val[1:1086]
+target_e <-Weekly$Today[5:1089]
+predict <- arima_model$coef[1]*( arima_model$coef[1]*lag2_diff + arima_model$coef[2]*lag3_diff + + arima_model$coef[3]*lag4_diff + arima_model$coef[4]) + arima_model$coef[2]*lag2_diff + + arima_model$coef[3]*lag3_diff + arima_model$coef[4]
+mean(abs(predict - target_e/target_e))
+```
+
+
+2.
+a.
+```{r}
+oil_gas <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/oil-gas.csv")
+dim(oil_gas)
+```
+
+```{r}
+gas_ts <- ts(data = oil_gas$Gas, frequency = 52)
+arima_model_gas <- auto.arima(gas_ts)
+arima_model_gas
+```
+
+b.
+```{r}
+ccf(oil_gas$Gas, oil_gas$Oil)
+```
+
+best result is lag1
+
+c.
+```{r}
+arimax <- arimax(oil_gas$Gas, order = c(1,1,0), xreg = lag(oil_gas$Oil,1))
+```
+```{r}
+mean(abs(na.omit(arimax$residuals)/oil_gas$Gas))
+```
+
+
+

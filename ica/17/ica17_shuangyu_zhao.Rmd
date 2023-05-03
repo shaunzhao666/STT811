@@ -1,0 +1,42 @@
+---
+title: "ica17"
+author: "Shuangyu Zhao"
+date: "2023-03-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(e1071)
+library(ggplot2)
+library(caret)
+```
+
+
+```{r}
+heart <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/Heart.csv")
+```
+```{r}
+heart[rowSums(is.na(heart)) > 0,]
+```
+```{r}
+heart <- na.omit(heart)
+```
+
+```{r}
+split_pct <- 0.7
+n <- length(heart$X)*split_pct # train size
+row_samp <- sample(1:length(heart$X), n, replace = FALSE)
+train <- heart[row_samp,]
+test <- heart[-row_samp,]
+
+```
+```{r}
+svm_mod_linear <- svm(AHD ~ RestBP + MaxHR, data = train, type = 'C-classification', kernel = 'linear')
+# other kernel options: polynomial, radial, sigmoid, linear
+pred_linear <- predict(svm_mod_linear, test)
+confusionMatrix(as.factor(pred_linear), as.factor(test$AHD))
+```
+

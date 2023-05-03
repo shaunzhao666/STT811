@@ -1,0 +1,57 @@
+---
+title: "ica26_syz"
+author: "Shuangyu Zhao"
+date: "2023-04-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+For the Heart data, 
+```{r}
+library(ISLR)
+Heart <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/data/Heart.csv")
+Heart <- na.omit(Heart)
+head(Heart)
+
+```
+
+(1)	Do a 70/30 train/test split.
+```{r}
+Heart$target <- ifelse(Heart$AHD == "Yes", 1, 0)
+train_size <- 0.7 * nrow(Heart)
+train_idx <- sample(seq_len(nrow(Heart)), size = train_size)
+
+train_data <- Heart[train_idx, ]
+test_data <- Heart[-train_idx, ]
+```
+
+(2)	Build a neural network with 3 nodes in a single hidden layer, using Age, MaxHR, Chol, and RestBP.
+```{r}
+library(keras)
+
+
+# Define model
+model <- keras_model_sequential() %>%
+  layer_dense(units = 3, input_shape = c(4)) %>%
+  layer_activation("relu") %>%
+  layer_dense(units = 1) %>%
+  compile(loss = "binary_crossentropy", optimizer = "adam", metrics = "accuracy")
+
+# Train model
+history <- model %>% fit(
+  x = train_data[, c("Age", "MaxHR", "Chol", "RestBP")],
+  y = train_data$target,
+  epochs = 50,
+  batch_size = 32,
+  validation_split = 0.2
+)
+
+```
+
+(3)	Calculate the Confusion matrix on the test dataset.
+(4)	Recreate the outputs from the hidden layer on the train dataset
+(5)	Use these 3 features to create an xgboost model
+(6)	Run the xgboost model on the test dataset, again re-creating the features
