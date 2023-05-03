@@ -1,0 +1,1025 @@
+---
+title: "STT 811 Project"
+author: "Yunting Gu, Shuangyu Zhao, Wenting Liu"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# EDA
+```{r}
+# library install
+library(tidyverse)
+library(sqldf)
+library(ggplot2)
+library(ggcorrplot)
+```
+
+Our project focus on two questions:
+1. for the word with \r\, train the model to fine whether the speaker misses this pronounciation
+2. according to the pronounciation, determine whether this words has \r\ or \t\
+
+```{r}
+Rclass <- readRDS("/Users/apple/Desktop/STT811_appl_stat_model/pro/data/RClassifierData_03July2019.Rds")
+Tclass <- readRDS("/Users/apple/Desktop/STT811_appl_stat_model/pro/data/TClassifierData_14Nov2019.Rds")
+```
+
+see the size of 2 dataframe
+```{r}
+dim(Rclass)
+```
+```{r}
+dim(Tclass)
+```
+
+1. EDA for question 1
+```{r}
+dim(Rclass)
+```
+
+```{r}
+sqldf("SELECT DISTINCT Rpresent
+       FROM Rclass")
+```
+```{r}
+sqldf("SELECT COUNT(*)
+      FROM Rclass
+      WHERE Rpresent = 'Absent' ")
+```
+see the number of data have been coded 'present'(means pronoucing the \r\ ) and 'absent' (means missing the \r\ )
+```{r}
+sqldf("SELECT COUNT(*)
+      FROM Rclass
+      WHERE Rpresent = 'Present' ")
+```
+```{r}
+sqldf("SELECT COUNT(*)
+      FROM Rclass
+      WHERE Rpresent = 'Absent' ")
+```
+```{r}
+rdf_pre_ab <- sqldf("SELECT *
+                    FROM Rclass
+                    WHERE Rpresent = 'Absent' OR Rpresent = 'Present'")
+```
+
+```{r}
+barplot(table(rdf_pre_ab$Rpresent)) 
+```
+we can see that the data are unbalanced.
+
+
+extract the columns I think useful
+```{r}
+rdf_useful <- rdf_pre_ab[34:217]
+rdf_useful$Rpresent <- rdf_pre_ab$Rpresent
+rdf_useful <- na.omit(rdf_useful)
+dim(rdf_useful)
+```
+
+encode absent - 0; present - 1
+```{r}
+rdf_useful$Rpresent_encode <- ifelse(rdf_useful$Rpresent == "Present", 1, 0)
+```
+
+standardize the data
+```{r}
+# Standardize the data
+standardized_rdata <- scale(rdf_useful[, c(1:184)], center = TRUE, scale = TRUE)
+rdf_useful[, c(1:184)] <- standardized_rdata
+```
+
+```{r}
+write.csv(rdf_useful, "detectingr.csv")
+```
+
+
+
+the correlation between elements
+```{r}
+cor_rdf_usefurl <- round(cor(rdf_useful[, c(1:184, 186)]), 2)
+write_csv(as.data.frame(cor_rdf_usefurl), file = "rdf_correlation.csv")
+```
+
+print all the variables name, whose correlations are higher than 0.9
+```{r}
+high_corr <- data.frame(var1 = character() , var2 = character(), cor = numeric())
+z = 1
+for (i in 1:185) {
+  for (j in 1:i) {
+    if (abs(cor_rdf_usefurl[i, j]) > 0.9 && i != j) {
+      high_corr[z, 1] <- colnames(cor_rdf_usefurl)[j]
+      high_corr[z, 2] <- colnames(cor_rdf_usefurl)[i]
+      high_corr[z, 3] <- cor_rdf_usefurl[i, j]
+      z = z +1
+    }
+  }
+}
+high_corr
+```
+
+For the variable listed in this dataframe, we are gonna choose var1 and drop var2, when we feed data into classifer.
+
+for the correlation between variables and target
+```{r}
+
+barplot(abs(cor_rdf_usefurl[, 185]), main = "Correlation with target variable", ylab = "Absolute correlation")
+abline(h = 0.5, col = "red")
+
+```
+
+we can see the correlation is not really high.
+
+for the variable having highest correlation with target, we will observe the distribution of it.
+```{r}
+cor_rdf_usefurl_df <- as.data.frame(cor_rdf_usefurl)
+head(cor_rdf_usefurl_df)
+```
+```{r}
+cor_rdf_usefurl_df$row <- colnames(cor_rdf_usefurl_df)
+df <- sqldf("SELECT row, Rpresent_encode
+             FROM cor_rdf_usefurl_df
+             ORDER BY Rpresent_encode DESC
+             LIMIT 4")
+df
+```
+
+```{r}
+ggplot(data = rdf_useful, aes(x = intens_F3min)) + geom_histogram() + facet_grid(.~Rpresent)
+```
+
+
+2. EDA for question 2
+
+```{r}
+Rclass_token <- Rclass
+Rclass_token$token <- 'r'
+```
+
+set column names to the lower case
+```{r}
+colnames(Rclass_token) <- tolower(colnames(Rclass_token))
+colnames(Tclass) <- tolower(colnames(Tclass))
+
+```
+
+
+list the all same column in two files
+```{r}
+same <- Reduce(intersect, list(colnames(Rclass_token), colnames(Tclass)))
+same
+```
+
+merge these two dataframe with same colums
+```{r}
+merge_df <- rbind(Rclass_token[, same], Tclass[, same])
+merge_df <- na.omit(merge_df)
+```
+```{r}
+barplot(table(merge_df$token))
+```
+
+the label are unbalanced
+```{r}
+head(merge_df)
+```
+
+```{r}
+num_token <- select_if(merge_df, is.numeric)
+num_token$token <- merge_df$token
+head(num_token)
+```
+
+scale the numeric variable
+```{r}
+# Standardize the data
+standardized_mergedata <- scale(num_token[, c(1:49)], center = TRUE, scale = TRUE)
+num_token[, c(1:49)] <- standardized_mergedata
+```
+
+```{r}
+write.csv()
+```
+
+
+
+encode the token. r-1, t-0
+```{r}
+num_token$token_encoded <- ifelse(num_token$token == 'r', 1, 0)
+merge_cor <- cor(num_token[, c(1:49, 51)])
+```
+
+```{r}
+write.csv(num_token, "distinguishr_t.csv")
+```
+correlation map between variables(use python to draw it)
+```{r}
+write_csv(as.data.frame(num_token[, c(1:49, 51)]), file = "merge_df.csv")
+```
+
+![](merge_Df_correlation2.png)
+print all the variables name, whose correlations are higher than 0.9
+```{r}
+high_corr2 <- data.frame(var1 = character() , var2 = character(), cor = numeric())
+z = 1
+for (i in 1:50) {
+  for (j in 1:i) {
+    if (abs(merge_cor[i, j]) > 0.9 && i != j) {
+      high_corr2[z, 1] <- colnames(merge_cor)[j]
+      high_corr2[z, 2] <- colnames(merge_cor)[i]
+      high_corr2[z, 3] <- merge_cor[i, j]
+      z = z +1
+    }
+  }
+}
+high_corr2
+```
+
+for the correlation between variables and target
+```{r}
+
+barplot(abs(merge_cor[, 50]), main = "Correlation with target variable", ylab = "Absolute correlation")
+abline(h = 0.5, col = "red")
+
+```
+```{r}
+merge_cor_df <- as.data.frame(merge_cor)
+head(merge_cor_df)
+```
+```{r}
+merge_cor_df$row <- colnames(merge_cor_df)
+sqldf("SELECT row, token_encoded
+      FROM merge_cor_df
+      ORDER BY token_encoded DESC
+      LIMIT 4")
+```
+
+the distribution of variables with relatively high correlation with token
+```{r}
+ggplot(data = num_token, aes(x = tokennum)) + geom_histogram() + facet_grid(.~token)
+```
+```{r}
+ggplot(data = num_token, aes(x = celexfreq)) + geom_histogram() + facet_grid(.~token)
+```
+
+# Models:
+## For Q1:
+for the words with r, train the model to fine whether the speaker misses this pronounciation
+
+1. Naive Bayes (Baseline)
+```{r}
+data1 <- read.csv(file="/Users/lowet/Documents/000-Files/02-study/01-University/04-MSU/2023 Spring/01-STT 811/06-Project/1-Data/detectingr.csv", header=TRUE)
+
+data1 <- data1[, -c(1, 186)]
+
+set.seed(666)
+
+split_pct <- 0.7
+n <- nrow(data1)*split_pct # train size
+row_samp <- sample(1:n, n, replace = FALSE)
+train <- data1[row_samp,]
+test <- data1[-row_samp,]
+train.Y <- data1[row_samp,]$Rpresent_encode
+test.Y <- data1[-row_samp,]$Rpresent_encod
+
+table(data1$Rpresent_encode)
+```
+Libraries:
+```{r}
+library(caret)
+library(e1071)
+library(tidyverse)
+library(ggplot2)
+```
+Model:
+```{r}
+data1_nb <- naiveBayes(data = train, Rpresent_encode ~ .) # Train a Naive Bayes model
+pred <- predict(data1_nb, test) # Make predictions on the testing set
+cm <- confusionMatrix(as.factor(pred), as.factor(test$Rpresent_encode)) # Generate a confusion matrix
+
+library(ggplot2)
+# extract the confusion matrix as a dataframe
+confusion_testlda <- data.frame(cm$table)
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix", x = "Predicted", y = "Actual", fill = "Frequency")
+```
+
+2. LDA:
+```{r}
+rdata <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/pro/detectingr.csv")
+dim(rdata)
+```
+target rdata[, 187]
+feature rdata[, c(2:185)]
+
+```{r}
+set.seed(666)
+split_pct <- 0.7
+n <- length(rdata$X)*split_pct # train size
+row_samp <- sample(1:length(rdata$X), n, replace = FALSE)
+train <- rdata[row_samp,]
+test <- rdata[-row_samp,]
+```
+```{r}
+train_feature <- train[, c(2:185)]
+train_target <- train[, 187]
+test_feature <- test[, c(2:185)]
+test_target <- test[, 187]
+```
+
+```{r}
+rdata_mod_lda <- lda(data = train_feature, train_target ~ .)
+test_pred_lda <- predict(rdata_mod_lda,test_feature, type = "response")$class
+test_cm_lda <- confusionMatrix(as.factor(test_pred_lda), reference = as.factor(test_target))
+train_cm_lda <- confusionMatrix(data = as.factor(predict(rdata_mod_lda, train_feature, type = "response")$class), reference = as.factor(train_target))
+
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_trainlda <- data.frame(train_cm_lda$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_trainlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_testlda <- data.frame(test_cm_lda$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+
+```{r}
+# calculate accuracy
+ test_cm_lda$overall["Accuracy"]
+
+# calculate F1 score
+test_cm_lda$byClass["F1"]
+# precision
+ test_cm_lda$byClass["Pos Pred Value"]
+# recall
+ test_cm_lda$byClass["Sensitivity"]
+```
+
+3. QDA
+```{r}
+rdata_mod_qda <- qda(data = train_feature, train_target ~ .)
+test_pred_qda <- predict(rdata_mod_qda,test_feature, type = "response")$class
+test_cm_qda <- confusionMatrix(as.factor(test_pred_qda), reference = as.factor(test_target))
+train_cm_qda <- confusionMatrix(data = as.factor(predict(rdata_mod_qda, train_feature, type = "response")$class), reference = as.factor(train_target))
+
+```
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_trainqda <- data.frame(train_cm_qda$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_trainqda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_testqda <- data.frame(test_cm_qda$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testqda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# calculate accuracy
+ test_cm_qda$overall["Accuracy"]
+
+# calculate F1 score
+test_cm_qda$byClass["F1"]
+# precision
+ test_cm_qda$byClass["Pos Pred Value"]
+# recall
+ test_cm_qda$byClass["Sensitivity"]
+```
+
+4. Logistic regression
+```{r}
+rdata_lr_mod <- glm(data = train_feature, train_target ~ ., family = binomial)
+test_pred_lr <- predict(rdata_lr_mod,test_feature, type = "response")
+train_cm_lr <- confusionMatrix(as.factor(as.integer(2*rdata_lr_mod$fitted.values)), reference = as.factor(train_target))
+test_cm_lr <- confusionMatrix(as.factor(as.integer(2*test_pred_lr)), reference = as.factor(test_target))
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_trainlr <- data.frame(train_cm_lr$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_trainlr, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_testlr <- data.frame(test_cm_lr$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlr, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# calculate accuracy
+ test_cm_lr$overall["Accuracy"]
+
+# calculate F1 score
+test_cm_lr$byClass["F1"]
+# precision
+ test_cm_lr$byClass["Pos Pred Value"]
+# recall
+ test_cm_lr$byClass["Sensitivity"]
+```
+
+5. KNN:
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+library(e1071)
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+library(class)
+library(randomForest)
+library(pROC)
+```
+
+```{r}
+setwd("/Users/yuntinggu/Documents/ACA_projects/r_autocode")
+r_data<-read.csv('detectingr.csv')
+rt_data<-read.csv('distinguishr_t.csv')
+glimpse(r_data)
+glimpse(rt_data)
+```
+
+```{r}
+glimpse(r_data)
+knn_r<- scale(select_if(r_data[,c(2:187)], is.numeric))
+n1 <- nrow(knn_r)*split_pct1 # train size
+row_samp1 <- sample(1:nrow(knn_r), n1, replace = FALSE) 
+train_r_knn_x <- knn_r[row_samp1,]
+test_r_knn_x <- knn_r[-row_samp1,]
+
+train_r_y<-r_data[row_samp1,]$Rpresent
+test_r_y<-r_data[-row_samp1,]$Rpresent
+
+knn_mod <- knn(train_r_knn_x, test_r_knn_x, cl = train_r_y , k = 9, prob = TRUE) #should try multiple ks
+
+
+confusionMatrix(knn_mod , reference = as.factor(test_r_y))
+
+do_knn_q1<-function(kNum){
+  
+knn_mod <- knn(train_r_knn_x, test_r_knn_x, cl = train_r_y , k = kNum, prob = TRUE) #should try multiple ks
+print(confusionMatrix(knn_mod , reference = as.factor(test_r_y)))  
+}
+
+for (i in 1:10){
+  print(i)
+  do_knn_q1(i)
+  }
+```
+
+6. Random Forests:
+```{r}
+set.seed(666)
+#random forests
+split_pct1 <- 0.7
+n1 <- length(r_data$Rpresent)*split_pct1 # train size
+row_samp1 <- sample(1:length(r_data$Rpresent), n1, replace = FALSE) 
+train_r <- r_data[row_samp1,]
+test_r <- r_data[-row_samp1,]
+
+
+q1_rf <- randomForest(as.factor(Rpresent) ~ ., data = train_r, mtry = 2, importance = TRUE, ntree = 1000, maxnodes = 4)
+rf_predict <- predict(q1_rf, test_r)
+confusionMatrix(rf_predict, as.factor(test_r$Rpresent))
+
+barplot(q1_rf$importance[,3])
+```
+
+7. Xgboost
+```{r}
+data1 <- read.csv(file="/Users/lowet/Documents/000-Files/02-study/01-University/04-MSU/2023 Spring/01-STT 811/06-Project/1-Data/detectingr.csv", header=TRUE)
+
+data1 <- data1[, -c(1, 186)]
+
+set.seed(666)
+
+split_pct <- 0.7
+n <- nrow(data1)*split_pct # train size
+row_samp <- sample(1:n, n, replace = FALSE)
+train <- data1[row_samp,]
+test <- data1[-row_samp,]
+train.Y <- data1[row_samp,]$Rpresent_encode
+test.Y <- data1[-row_samp,]$Rpresent_encod
+
+table(data1$Rpresent_encode)
+```
+
+Libraries:
+```{r}
+library(xgboost)
+library(caret)
+```
+Model:
+```{r}
+data1_xgb <- xgboost(data = data.matrix(train[,c(1:184)]), 
+                     nrounds = 100, max_depth = 2, eta = 0.3, 
+                     label = train$Rpresent_encode, objective = "binary:logistic")
+
+pred <- predict(data1_xgb, data.matrix(test[,c(1:184)]))
+cm <- confusionMatrix(as.factor(as.integer(2*pred)), as.factor(test$Rpresent_encode))
+```
+
+```{r}
+xgb.importance(colnames(train[,c(1:184)]), model = data1_xgb)
+```
+
+```{r}
+library(ggplot2)
+# extract the confusion matrix as a dataframe
+confusion_testlda <- data.frame(cm$table)
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix", x = "Predicted", y = "Actual", fill = "Frequency")
+```
+
+ SVM with different Kernels
+Libraries:
+```{r}
+library(e1071)
+library(caret)
+library(ISLR2)
+library(ggplot2)
+```
+Models:
+```{r}
+# Linear Kernel:
+data1_svm_l <- svm(Rpresent_encode ~ ., data = train, type = 'C-classification', 
+                      kernel = 'linear', cost = 1, gamma = 0.5)
+pred <- predict(data1_svm_l, test)
+cm <- confusionMatrix(as.factor(pred), as.factor(test$Rpresent_encode))
+```
+
+```{r}
+library(ggplot2)
+# extract the confusion matrix as a dataframe
+confusion_testlda <- data.frame(cm$table)
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix", x = "Predicted", y = "Actual", fill = "Frequency")
+```
+
+```{r}
+# Polynomial Kernel:
+data1_svm_p <- svm(Rpresent_encode ~ ., data = train, type = 'C-classification', 
+                      kernel = 'polynomial', cost = 1, gamma = 0.5)
+pred <- predict(data1_svm_p, test)
+cm <- confusionMatrix(as.factor(pred), as.factor(test$Rpresent_encode))
+```
+
+```{r}
+library(ggplot2)
+# extract the confusion matrix as a dataframe
+confusion_testlda <- data.frame(cm$table)
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix", x = "Predicted", y = "Actual", fill = "Frequency")
+```
+
+```{r}
+# Radial Kernel:
+data1_svm_r <- svm(Rpresent_encode ~ ., data = train, type = 'C-classification', 
+                      kernel = 'radial', cost = 1, gamma = 0.5)
+pred <- predict(data1_svm_r, test)
+cm <- confusionMatrix(as.factor(pred), as.factor(test$Rpresent_encode))
+```
+
+```{r}
+library(ggplot2)
+# extract the confusion matrix as a dataframe
+confusion_testlda <- data.frame(cm$table)
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix", x = "Predicted", y = "Actual", fill = "Frequency")
+```
+
+```{r}
+# Sigmoid Kernel:
+data1_svm_s <- svm(Rpresent_encode ~ ., data = train, type = 'C-classification', 
+                      kernel = 'sigmoid', cost = 1, gamma = 0.5)
+pred <- predict(data1_svm_s, test)
+cm <- confusionMatrix(as.factor(pred), as.factor(test$Rpresent_encode))
+```
+
+```{r}
+library(ggplot2)
+# extract the confusion matrix as a dataframe
+confusion_testlda <- data.frame(cm$table)
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix", x = "Predicted", y = "Actual", fill = "Frequency")
+```
+
+## For Q2:
+1. Naive Bayes (Baseline)
+Datasets:
+```{r}
+data2 <- read.csv(file="/Users/lowet/Documents/000-Files/02-study/01-University/04-MSU/2023 Spring/01-STT 811/06-Project/1-Data/distinguishr_t.csv", header=TRUE)
+
+data2 <- data2[, -c(1, 51)]
+
+table(data2$token_encoded)
+```
+
+```{r}
+set.seed(888)
+split_pct <- 0.7
+n <- length(data2$token_encoded)*split_pct # train size
+row_samp <- sample(1:length(data2$token_encoded), n, replace = FALSE) 
+train <- data2[row_samp,]
+test <- data2[-row_samp,]
+```
+
+```{r}
+table(train$token_encoded)
+```
+
+```{r}
+table(test$token_encoded)
+```
+
+:
+```{r}
+library(caret)
+library(e1071)
+library(tidyverse)
+library(ggplot2)
+```
+Model:
+```{r}
+data2_nb <- naiveBayes(data = train, token_encoded ~ .) # Train a Naive Bayes model
+pred <- predict(data2_nb, test) # Make predictions on the testing set
+confusion_mat <- confusionMatrix(as.factor(pred), as.factor(test$token_encoded)) # Generate a confusion matrix
+
+confusion_mat$byClass["F1"]
+
+confusion_mat$byClass
+```
+
+```{r}
+# Load the pROC package
+library(pROC)
+
+# Compute the ROC curve
+roc_curve <- roc(as.numeric(test$token_encoded), as.numeric(pred))
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve", xlab = "False Positive Rate", ylab = "True Positive Rate", print.auc = TRUE, legacy.axes = TRUE)
+```
+
+2. LDA
+```{r}
+library(caret)
+library(ggplot2)
+library(class)
+library(e1071)
+library(MASS)
+library(pROC)
+```
+
+
+according to the pronounciation, determine whether this words has r or t
+```{r}
+rtdata <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/pro/distinguishr_t.csv")
+dim(rtdata)
+```
+target rdata[, 52]
+feature rdata[, c(2:50)]
+ r-1, t-0
+
+
+
+```{r}
+set.seed(888)
+set.seed(888)
+split_pct <- 0.7
+n <- length(rtdata$token)*split_pct # train size
+row_samp <- sample(1:length(rtdata$token), n, replace = FALSE) 
+train <- rtdata[row_samp,]
+test <- rtdata[-row_samp,]
+
+```
+```{r}
+train_feature <- train[, c(2:50)]
+train_target <- train[, 52]
+test_feature <- test[, c(2:50)]
+test_target <- test[, 52]
+
+```
+```{r}
+table(train_target)
+```
+
+```{r}
+rdata_mod_lda <- lda(data = train_feature, train_target ~ .)
+test_pred_lda <- predict(rdata_mod_lda,test_feature, type = "response")$class
+test_cm_lda <- confusionMatrix(as.factor(test_pred_lda), reference = as.factor(test_target))
+train_cm_lda <- confusionMatrix(data = as.factor(predict(rdata_mod_lda, train_feature, type = "response")$class), reference = as.factor(train_target))
+```
+
+```{r}
+# Compute the ROC curve
+roc_curve <- roc(test_target,  predict(rdata_mod_lda, newdata = test_feature)$posterior[, 2])
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve", xlab = "False Positive Rate", ylab = "True Positive Rate", print.auc = TRUE, legacy.axes = TRUE)
+```
+
+3. QDA
+```{r}
+rdata_mod_qda <- qda(data = train_feature, train_target ~ .)
+test_pred_qda <- predict(rdata_mod_qda,test_feature, type = "response")$class
+test_cm_qda <- confusionMatrix(as.factor(test_pred_qda), reference = as.factor(test_target))
+train_cm_qda <- confusionMatrix(data = as.factor(predict(rdata_mod_qda, train_feature, type = "response")$class), reference = as.factor(train_target))
+```
+
+```{r}
+# Compute the ROC curve
+roc_curve <- roc(test_target,  predict(rdata_mod_qda, newdata = test_feature)$posterior[, 2])
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve", xlab = "False Positive Rate", ylab = "True Positive Rate", print.auc = TRUE, legacy.axes = TRUE)
+```
+
+4. logistic regression
+```{r}
+rtdata_lr_mod <- glm(data = train_feature, train_target ~ ., family = binomial)
+test_pred_lr <- predict(rtdata_lr_mod,test_feature, type = "response")
+train_cm_lr <- confusionMatrix(as.factor(as.integer(2*rtdata_lr_mod$fitted.values)), reference = as.factor(train_target))
+test_cm_lr <- confusionMatrix(as.factor(as.integer(2*test_pred_lr)), reference = as.factor(test_target))
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_trainlr <- data.frame(train_cm_lr$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_trainlr, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_testlr <- data.frame(test_cm_lr$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlr, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+```{r}
+# calculate accuracy
+ test_cm_lr$overall["Accuracy"]
+
+# calculate F1 score
+test_cm_lr$byClass["F1"]
+# precision
+ test_cm_lr$byClass["Pos Pred Value"]
+# recall
+ test_cm_lr$byClass["Sensitivity"]
+```
+```{r}
+# Load the pROC package
+library(pROC)
+
+# Compute the ROC curve
+roc_curve <- roc(test_target, test_pred_lr)
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve", xlab = "False Positive Rate", ylab = "True Positive Rate", print.auc = TRUE, legacy.axes = TRUE)
+```
+
+5. KNN
+```{r}
+knn_mod <- knn(train_feature, test_feature, cl = train_target , k = 3, prob = TRUE)
+knn_cm <- confusionMatrix(knn_mod , reference = as.factor(test_target))
+
+# extract the confusion matrix as a dataframe
+confusion_knn <- data.frame(knn_cm$table)
+
+# calculate F1 score
+knn_cm$byClass["F1"]
+```
+
+```{r}
+knn_mod <- knn(train_feature, test_feature, cl = train_target , k = 5, prob = TRUE)
+knn_cm <- confusionMatrix(knn_mod , reference = as.factor(test_target))
+
+# extract the confusion matrix as a dataframe
+confusion_knn <- data.frame(knn_cm$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_knn, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# calculate accuracy
+ knn_cm$overall["Accuracy"]
+
+# calculate F1 score
+knn_cm$byClass["F1"]
+# precision
+ knn_cm$byClass["Pos Pred Value"]
+# recall
+ knn_cm$byClass["Sensitivity"]
+```
+
+```{r}
+knn_mod <- knn(train_feature, test_feature, cl = train_target , k = 7, prob = TRUE)
+knn_cm <- confusionMatrix(knn_mod , reference = as.factor(test_target))
+
+# extract the confusion matrix as a dataframe
+confusion_knn <- data.frame(knn_cm$table)
+
+# calculate F1 score
+knn_cm$byClass["F1"]
+```
+
+```{r}
+
+# Compute the ROC curve
+roc_curve <- roc(test_target,  attr(knn_mod, "prob"))
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve", xlab = "False Positive Rate", ylab = "True Positive Rate", print.auc = TRUE, legacy.axes = TRUE)
+```
+
+```{r}
+knn_mod <- knn(train_feature, test_feature, cl = train_target , k = 9, prob = TRUE)
+knn_cm <- confusionMatrix(knn_mod , reference = as.factor(test_target))
+
+# extract the confusion matrix as a dataframe
+confusion_knn <- data.frame(knn_cm$table)
+
+# calculate F1 score
+knn_cm$byClass["F1"]
+```
+
+6. Random Forests:
+Datasets:
+```{r}
+data2 <- read.csv(file="/Users/lowet/Documents/000-Files/02-study/01-University/04-MSU/2023 Spring/01-STT 811/06-Project/1-Data/distinguishr_t.csv", header=TRUE)
+
+data2 <- data2[, -c(1, 51)]
+
+table(data2$token_encoded)
+```
+
+```{r}
+set.seed(888)
+split_pct <- 0.7
+n <- length(data2$token_encoded)*split_pct # train size
+row_samp <- sample(1:length(data2$token_encoded), n, replace = FALSE) 
+train <- data2[row_samp,]
+test <- data2[-row_samp,]
+```
+
+```{r}
+table(train$token_encoded)
+```
+
+```{r}
+table(test$token_encoded)
+```
+
+Libraries:
+```{r}
+library(randomForest)
+library(caret)
+```
+model:
+```{r}
+data2_rf <- randomForest(token_encoded ~ ., data = train,
+                         mtry = 2, importance = TRUE, ntree = 1000, maxnodes = 4)
+pred <- ifelse(predict(data2_rf, test) > 0.5, 1, 0)
+confusion_mat <- confusionMatrix(as.factor(pred), as.factor(test$token_encoded))
+
+confusion_mat$byClass["F1"]
+
+confusion_mat$byClass
+```
+
+```{r}
+# Load the pROC package
+library(pROC)
+
+# Compute the ROC curve
+roc_curve <- roc(as.numeric(test$token_encoded), as.numeric(pred))
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve", xlab = "False Positive Rate", ylab = "True Positive Rate", print.auc = TRUE, legacy.axes = TRUE)
+```
+
+7. Xgboost with hyperparameter tuning
+Libraries:
+```{r}
+library(xgboost)
+library(caret)
+```
+
+```{r}
+data2_xgb <- xgboost(data = data.matrix(train[1:49]), 
+                     nrounds = 100, max_depth = 2, eta = 0.3, 
+                     label = train$token_encoded, objective = "binary:logistic")
+
+pred <- predict(data2_xgb, data.matrix(test[1:49]))
+confusion_mat <- confusionMatrix(as.factor(as.integer(2*pred)), as.factor(test$token_encoded))
+
+confusion_mat$byClass["F1"]
+
+confusion_mat$byClass
+```
+
+```{r}
+# Load the pROC package
+library(pROC)
+
+# Compute the ROC curve
+roc_curve <- roc(as.numeric(test$token_encoded), as.numeric(pred))
+
+# Plot the ROC curve
+plot(roc_curve, main = "ROC Curve", xlab = "False Positive Rate", ylab = "True Positive Rate", print.auc = TRUE, legacy.axes = TRUE)
+```

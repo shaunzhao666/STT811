@@ -1,0 +1,207 @@
+---
+title: "pro_part1"
+author: "Shuangyu Zhao"
+date: "2023-04-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(caret)
+library(ggplot2)
+library(MASS)
+```
+
+for the words with r, train the model to fine whether the speaker misses this pronounciation
+
+```{r}
+rdata <- read.csv("/Users/apple/Desktop/STT811_appl_stat_model/pro/detectingr.csv")
+dim(rdata)
+```
+target rdata[, 187]
+feature rdata[, c(2:185)]
+
+```{r}
+set.seed(666)
+split_pct <- 0.7
+n <- length(rdata$X)*split_pct # train size
+row_samp <- sample(1:length(rdata$X), n, replace = FALSE)
+train <- rdata[row_samp,]
+test <- rdata[-row_samp,]
+```
+```{r}
+train_feature <- train[, c(2:185)]
+train_target <- train[, 187]
+test_feature <- test[, c(2:185)]
+test_target <- test[, 187]
+```
+
+LDA
+```{r}
+rdata_mod_lda <- lda(data = train_feature, train_target ~ .)
+test_pred_lda <- predict(rdata_mod_lda,test_feature, type = "response")$class
+test_cm_lda <- confusionMatrix(as.factor(test_pred_lda), reference = as.factor(test_target))
+train_cm_lda <- confusionMatrix(data = as.factor(predict(rdata_mod_lda, train_feature, type = "response")$class), reference = as.factor(train_target))
+
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_trainlda <- data.frame(train_cm_lda$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_trainlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_testlda <- data.frame(test_cm_lda$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+
+```{r}
+# calculate accuracy
+ test_cm_lda$overall["Accuracy"]
+
+# calculate F1 score
+test_cm_lda$byClass["F1"]
+# precision
+ test_cm_lda$byClass["Pos Pred Value"]
+# recall
+ test_cm_lda$byClass["Sensitivity"]
+```
+
+
+
+
+QDA
+```{r}
+rdata_mod_qda <- qda(data = train_feature, train_target ~ .)
+test_pred_qda <- predict(rdata_mod_qda,test_feature, type = "response")$class
+test_cm_qda <- confusionMatrix(as.factor(test_pred_qda), reference = as.factor(test_target))
+train_cm_qda <- confusionMatrix(data = as.factor(predict(rdata_mod_qda, train_feature, type = "response")$class), reference = as.factor(train_target))
+
+```
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_trainqda <- data.frame(train_cm_qda$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_trainqda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_testqda <- data.frame(test_cm_qda$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testqda, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+```{r}
+# calculate accuracy
+ test_cm_qda$overall["Accuracy"]
+
+# calculate F1 score
+test_cm_qda$byClass["F1"]
+# precision
+ test_cm_qda$byClass["Pos Pred Value"]
+# recall
+ test_cm_qda$byClass["Sensitivity"]
+```
+
+
+
+
+Logistic regression
+```{r}
+rdata_lr_mod <- glm(data = train_feature, train_target ~ ., family = binomial)
+test_pred_lr <- predict(rdata_lr_mod,test_feature, type = "response")
+train_cm_lr <- confusionMatrix(as.factor(as.integer(2*rdata_lr_mod$fitted.values)), reference = as.factor(train_target))
+test_cm_lr <- confusionMatrix(as.factor(as.integer(2*test_pred_lr)), reference = as.factor(test_target))
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_trainlr <- data.frame(train_cm_lr$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_trainlr, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# extract the confusion matrix as a dataframe
+confusion_testlr <- data.frame(test_cm_lr$table)
+
+# create a ggplot of the confusion matrix
+ggplot(data = confusion_testlr, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  labs(title = "Confusion Matrix",
+       x = "Predicted",
+       y = "Actual",
+       fill = "Frequency")
+```
+
+```{r}
+# calculate accuracy
+ test_cm_lr$overall["Accuracy"]
+
+# calculate F1 score
+test_cm_lr$byClass["F1"]
+# precision
+ test_cm_lr$byClass["Pos Pred Value"]
+# recall
+ test_cm_lr$byClass["Sensitivity"]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
